@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+  <form class="bg-white p-8 rounded shadow-md w-full max-w-sm" method="POST">
+    <h2 class="text-2xl font-bold mb-4">Login</h2>
+    <input name="username" class="w-full p-2 mb-4 border rounded" placeholder="Username" required>
+    <input name="password" type="password" class="w-full p-2 mb-4 border rounded" placeholder="Password" required>
+    <button class="bg-blue-500 text-white px-4 py-2 rounded w-full">Login</button>
+    <p class="mt-4 text-sm">No account? <a href="/register" class="text-blue-600">Register here</a></p>
+  </form>
+</body>
+</html>

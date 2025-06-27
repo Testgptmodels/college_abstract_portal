@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script>
+    let currentData = {};
+
+    async function loadNext() {
+      const model = document.getElementById('model').value;
+      const res = await fetch(`/get_next/${model}`);
+      const data = await res.json();
+      currentData = data;
+      document.getElementById('title').innerText = data.title || 'No more abstracts';
+      document.getElementById('abstract-form').style.display = data.title ? 'block' : 'none';
+    }
+
+    async function submitResponse() {
+      const model = document.getElementById('model').value;
+      const response = document.getElementById('response').value;
+      const res = await fetch(`/submit/${model}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...currentData, response })
+      });
+      if ((await res.json()).status === 'success') {
+        document.getElementById('response').value = '';
+        loadNext();
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-100 p-8">
+  <div class="max-w-3xl mx-auto bg-white p-6 rounded shadow">
+    <div class="flex justify-between mb-4">
+      <h1 class="text-xl font-bold">Welcome, {{ username }}</h1>
+      <a href="/logout" class="text-red-500">Logout</a>
+    </div>
+
+    <label class="block mb-2">Select Model:</label>
+    <select id="model" class="border p-2 mb-4 w-full" onchange="loadNext()">
+      <option value="gemini_flash">Gemini Flash</option>
+      <option value="grok">Grok</option>
+      <option value="claude">Claude</option>
+    </select>
+
+    <h2 class="font-semibold mb-2">Abstract Title:</h2>
+    <div id="title" class="bg-gray-100 p-4 mb-4 rounded">Please select a model</div>
+
+    <form id="abstract-form" style="display:none;" onsubmit="event.preventDefault(); submitResponse();">
+      <textarea id="response" class="w-full h-40 border p-2 mb-4 rounded" placeholder="Paste your abstract response here..." required></textarea>
+      <button class="bg-blue-500 text-white px-4 py-2 rounded">Submit</button>
+    </form>
+  </div>
+</body>
+</html>
