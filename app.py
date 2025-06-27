@@ -142,6 +142,8 @@ def get_next(model):
     input_path = 'backend/inputs/input.jsonl'
     output_path = f'backend/outputs/output_{model}.jsonl'
     abstract = get_next_abstract(input_path, output_path)
+    if abstract:
+        abstract['title'] = f"Generate an academic abstract for the paper titled with minimum 150 to 300 words \"{abstract['title']}\""
     return jsonify(abstract or {})
 
 @app.route('/submit/<model>', methods=['POST'])
@@ -150,16 +152,17 @@ def submit(model):
     response = data['response']
     username = session['username']
     word_count, sentence_count, char_count = count_text_stats(response)
-    title = re.sub(r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words ', '', data['title'])
+    title = re.sub(r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words \"', '', data['title'])
+    title = title.rstrip('"')
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
         'title': title,
-        'username': username,
         'response': response,
         'word_count': word_count,
         'sentence_count': sentence_count,
         'character_count': char_count,
+        'username': username,
         'timestamp': datetime.now(timezone.utc).isoformat()
     }
     output_path = f'backend/outputs/output_{model}.jsonl'
@@ -199,7 +202,7 @@ if __name__ == '__main__':
         if not User.query.filter_by(username='admin').first():
             admin_user = User(
                 username='admin',
-                password=generate_password_hash('admin123'),
+                password=generate_password_hash('testgptmodels'),
                 is_admin=True
             )
             db.session.add(admin_user)
