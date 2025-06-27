@@ -2,21 +2,132 @@
 <html>
 <head>
   <title>Admin Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    canvas {
+      max-width: 800px;
+      margin: 20px auto;
+      display: block;
+    }
+    h1, h3 {
+      text-align: center;
+    }
+    .downloads, .contributors {
+      text-align: center;
+      margin-top: 30px;
+    }
+    .downloads a {
+      margin: 8px;
+      padding: 10px 16px;
+      background: #007BFF;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+    }
+    .contributors ul {
+      list-style: none;
+      padding: 0;
+    }
+  </style>
 </head>
-<body class="bg-gray-100 p-8">
-  <div class="max-w-2xl mx-auto bg-white p-6 rounded shadow">
-    <div class="flex justify-between mb-4">
-      <h1 class="text-xl font-bold">Admin Dashboard</h1>
-      <a href="/logout" class="text-red-500">Logout</a>
-    </div>
+<body>
+  <h1>📊 Admin Dashboard</h1>
 
-    <h2 class="font-semibold mb-2">Model Stats:</h2>
-    <ul class="list-disc pl-6">
-      {% for model, count in stats.items() %}
-      <li><strong>{{ model.replace('_', ' ').title() }}:</strong> {{ count }} responses</li>
+  <h3>1. Total Answers Per Model</h3>
+  <canvas id="modelChart"></canvas>
+
+  <h3>2. User Activity per Model</h3>
+  <canvas id="userModelChart"></canvas>
+
+  <h3>3. Daily Login Activity</h3>
+  <canvas id="dailyChart"></canvas>
+
+  <div class="contributors">
+    <h3>4. Top Contributors</h3>
+    <ul>
+      {% for user, count in top_contributors %}
+        <li><strong>{{ user }}</strong>: {{ count }} answers</li>
       {% endfor %}
     </ul>
   </div>
+
+  <div class="downloads">
+    <h3>📥 Download Model Outputs</h3>
+    {% for model in models %}
+      <a href="{{ url_for('download_output', model=model) }}" target="_blank">
+        Download {{ model.replace('_', ' ').title() }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <script>
+    // Total answers per model
+    const modelCtx = document.getElementById('modelChart');
+    new Chart(modelCtx, {
+      type: 'bar',
+      data: {
+        labels: {{ stats.keys()|list|tojson }},
+        datasets: [{
+          label: 'Answers Submitted',
+          data: {{ stats.values()|list|tojson }},
+          backgroundColor: 'rgba(54, 162, 235, 0.7)'
+        }]
+      },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+
+    // User activity per model
+    const userModelData = {{ user_model_count|tojson }};
+    const allUsers = Object.keys(userModelData);
+    const allModels = {{ models|tojson }};
+    const modelDatasets = allModels.map((model, idx) => {
+      return {
+        label: model,
+        data: allUsers.map(user => userModelData[user][model] || 0),
+        backgroundColor: `hsl(${idx * 60}, 70%, 60%)`
+      };
+    });
+
+    const userModelCtx = document.getElementById('userModelChart');
+    new Chart(userModelCtx, {
+      type: 'bar',
+      data: {
+        labels: allUsers,
+        datasets: modelDatasets
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { stacked: true },
+          y: { stacked: true, beginAtZero: true }
+        }
+      }
+    });
+
+    // Daily login graph
+    const dailyData = {{ daily_logins|tojson }};
+    const days = Object.keys(dailyData);
+    const counts = Object.values(dailyData);
+
+    const dailyCtx = document.getElementById('dailyChart');
+    new Chart(dailyCtx, {
+      type: 'line',
+      data: {
+        labels: days,
+        datasets: [{
+          label: 'Logins',
+          data: counts,
+          fill: false,
+          borderColor: 'green',
+          tension: 0.2
+        }]
+      },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+  </script>
 </body>
 </html>

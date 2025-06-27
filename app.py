@@ -1,10 +1,11 @@
 # backend/app.py
 
-from flask import Flask, render_template, request, redirect, session, url_for, jsonify, send_file
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify, send_file, flash
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone
 import jsonlines, os
 from werkzeug.security import generate_password_hash, check_password_hash
+from collections import defaultdict, Counter
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -52,7 +53,7 @@ def count_text_stats(text):
     return len(words), sentences, len(text)
 
 # --- ROUTES ---
-@app.route('/')
+@app.route('/', methods=['GET'])
 def home():
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
@@ -63,7 +64,8 @@ def register():
     if request.method == 'POST':
         username = request.form['username']
         if User.query.filter_by(username=username).first():
-            return "Username already exists. Try another."
+            flash("Username already exists. Try another.")
+            return redirect(url_for('register'))
         password = generate_password_hash(request.form['password'])
         db.session.add(User(username=username, password=password))
         db.session.commit()
@@ -89,6 +91,9 @@ def login():
             if user.is_admin:
                 return redirect(url_for('admin_dashboard'))
             return redirect(url_for('dashboard'))
+        else:
+            flash("Invalid username or password.")
+            return redirect(url_for('login'))
     return render_template('login.html')
 
 @app.route('/dashboard', methods=['GET'])
@@ -101,12 +106,37 @@ def dashboard():
 def admin_dashboard():
     if 'user_id' not in session or not session.get('is_admin'):
         return redirect(url_for('login'))
-    stats = {}
+
     models = ['gemini_flash', 'grok', 'claude']
+    stats = {}
+    user_model_count = defaultdict(lambda: Counter())
+    daily_logins = defaultdict(int)
+
     for model in models:
         path = f'backend/outputs/output_{model}.jsonl'
-        stats[model] = len(load_jsonl(path)) if os.path.exists(path) else 0
-    return render_template('admin_dashboard.html', stats=stats)
+        entries = load_jsonl(path)
+        stats[model] = len(entries)
+        for entry in entries:
+            user_model_count[entry['username']][model] += 1
+
+    for session_log in SessionLog.query.all():
+        if session_log.login_time:
+            date_str = session_log.login_time.date().isoformat()
+            daily_logins[date_str] += 1
+
+    contributor_count = Counter()
+    for user, model_counts in user_model_count.items():
+        contributor_count[user] = sum(model_counts.values())
+    top_contributors = contributor_count.most_common(10)
+
+    return render_template(
+        'admin_dashboard.html',
+        stats=stats,
+        models=models,
+        user_model_count=dict(user_model_count),
+        daily_logins=dict(daily_logins),
+        top_contributors=top_contributors
+    )
 
 @app.route('/get_next/<model>')
 def get_next(model):
@@ -130,7 +160,7 @@ def submit(model):
         'word_count': word_count,
         'sentence_count': sentence_count,
         'character_count': char_count,
-        'timestamp': datetime.now().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
     output_path = f'backend/outputs/output_{model}.jsonl'
     append_jsonl(output_path, entry)
@@ -175,6 +205,5 @@ if __name__ == '__main__':
             db.session.add(admin_user)
             db.session.commit()
 
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
