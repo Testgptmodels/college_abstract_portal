@@ -4,7 +4,6 @@ from flask import Flask, render_template, request, redirect, session, url_for, j
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import jsonlines, os
-import os
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -145,6 +144,17 @@ if __name__ == '__main__':
     os.makedirs('backend/inputs', exist_ok=True)
     with app.app_context():
         db.create_all()
+
+        # Create default admin if not exists
+        if not User.query.filter_by(username='admin').first():
+            admin_user = User(
+                username='admin',
+                password=generate_password_hash('admin123'),
+                is_admin=True
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+
+    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
-
