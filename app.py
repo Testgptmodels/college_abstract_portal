@@ -79,22 +79,27 @@ def login():
             session['is_admin'] = user.is_admin
             db.session.add(SessionLog(user_id=user.id))
             db.session.commit()
+            if user.is_admin:
+                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('dashboard'))
     return render_template('login.html')
 
-@app.route('/dashboard', methods=['GET', 'POST'])
+@app.route('/dashboard', methods=['GET'])
 def dashboard():
-    if 'user_id' not in session:
+    if 'user_id' not in session or session.get('is_admin'):
         return redirect(url_for('login'))
-    if session.get('is_admin'):
-        # Admin dashboard
-        stats = {}
-        models = ['gemini_flash', 'grok', 'claude']
-        for model in models:
-            path = f'backend/outputs/output_{model}.jsonl'
-            stats[model] = len(load_jsonl(path)) if os.path.exists(path) else 0
-        return render_template('dashboard.html', stats=stats)
     return render_template('abstract_submit.html', username=session['username'])
+
+@app.route('/admin', methods=['GET'])
+def admin_dashboard():
+    if 'user_id' not in session or not session.get('is_admin'):
+        return redirect(url_for('login'))
+    stats = {}
+    models = ['gemini_flash', 'grok', 'claude']
+    for model in models:
+        path = f'backend/outputs/output_{model}.jsonl'
+        stats[model] = len(load_jsonl(path)) if os.path.exists(path) else 0
+    return render_template('dashboard.html', stats=stats)
 
 @app.route('/get_next/<model>')
 def get_next(model):
