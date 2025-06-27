@@ -3,7 +3,7 @@
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify, send_file, flash
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timezone
-import jsonlines, os
+import jsonlines, os, re
 from werkzeug.security import generate_password_hash, check_password_hash
 from collections import defaultdict, Counter
 
@@ -43,7 +43,6 @@ def get_next_abstract(input_path, output_path):
     answered_ids = {entry['id'] for entry in outputs}
     for entry in inputs:
         if entry['id'] not in answered_ids:
-            entry['title'] = f"Generate an academic abstract for the paper titled with minimum 150 to 300 words {entry['title']}"
             return entry
     return None
 
@@ -151,10 +150,11 @@ def submit(model):
     response = data['response']
     username = session['username']
     word_count, sentence_count, char_count = count_text_stats(response)
+    title = re.sub(r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words ', '', data['title'])
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'title': data['title'],
+        'title': title,
         'username': username,
         'response': response,
         'word_count': word_count,
@@ -199,7 +199,7 @@ if __name__ == '__main__':
         if not User.query.filter_by(username='admin').first():
             admin_user = User(
                 username='admin',
-                password=generate_password_hash('testgptmodels'),
+                password=generate_password_hash('admin123'),
                 is_admin=True
             )
             db.session.add(admin_user)

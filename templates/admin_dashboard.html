@@ -1,133 +1,120 @@
+<!-- templates/admin_dashboard.html -->
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Admin Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    canvas {
-      max-width: 800px;
-      margin: 20px auto;
-      display: block;
-    }
-    h1, h3 {
-      text-align: center;
-    }
-    .downloads, .contributors {
-      text-align: center;
-      margin-top: 30px;
-    }
-    .downloads a {
-      margin: 8px;
-      padding: 10px 16px;
-      background: #007BFF;
-      color: white;
-      text-decoration: none;
-      border-radius: 5px;
-    }
-    .contributors ul {
-      list-style: none;
-      padding: 0;
-    }
-  </style>
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        h2 { margin-top: 40px; }
+        .charts { display: flex; gap: 40px; flex-wrap: wrap; }
+        .chart-container { width: 48%; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .downloads { margin-top: 40px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .downloads button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+        .logout { position: absolute; top: 20px; right: 40px; }
+    </style>
 </head>
 <body>
-  <h1>📊 Admin Dashboard</h1>
+    <a class="logout" href="{{ url_for('logout') }}">🔒 Logout</a>
+    <h1>📊 Admin Dashboard</h1>
 
-  <h3>1. Total Answers Per Model</h3>
-  <canvas id="modelChart"></canvas>
+    <div class="charts">
+        <div class="chart-container">
+            <h2>Total Answers Per Model</h2>
+            <canvas id="modelChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>User Activity Per Model</h2>
+            <canvas id="userActivityChart"></canvas>
+        </div>
+    </div>
 
-  <h3>2. User Activity per Model</h3>
-  <canvas id="userModelChart"></canvas>
+    <div class="charts">
+        <div class="chart-container">
+            <h2>Daily Login Activity</h2>
+            <canvas id="loginChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>Top Contributors</h2>
+            <canvas id="topContributorsChart"></canvas>
+        </div>
+    </div>
 
-  <h3>3. Daily Login Activity</h3>
-  <canvas id="dailyChart"></canvas>
+    <div class="downloads">
+        <h2>📥 Download Model Outputs</h2>
+        {% for model in models %}
+        <form method="get" action="{{ url_for('download_output', model=model) }}" style="display:inline;">
+            <button type="submit">Download {{ model.replace('_', ' ').title() }}</button>
+        </form>
+        {% endfor %}
+    </div>
 
-  <div class="contributors">
-    <h3>4. Top Contributors</h3>
-    <ul>
-      {% for user, count in top_contributors %}
-        <li><strong>{{ user }}</strong>: {{ count }} answers</li>
-      {% endfor %}
-    </ul>
-  </div>
+    <script>
+        const modelStats = {{ stats | tojson }};
+        const userModelData = {{ user_model_count | tojson }};
+        const dailyLogins = {{ daily_logins | tojson }};
+        const topContributors = {{ top_contributors | tojson }};
 
-  <div class="downloads">
-    <h3>📥 Download Model Outputs</h3>
-    {% for model in models %}
-      <a href="{{ url_for('download_output', model=model) }}" target="_blank">
-        Download {{ model.replace('_', ' ').title() }}
-      </a>
-    {% endfor %}
-  </div>
+        const modelCtx = document.getElementById('modelChart');
+        new Chart(modelCtx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(modelStats),
+                datasets: [{
+                    label: '# of Abstracts',
+                    data: Object.values(modelStats),
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)'
+                }]
+            }
+        });
 
-  <script>
-    // Total answers per model
-    const modelCtx = document.getElementById('modelChart');
-    new Chart(modelCtx, {
-      type: 'bar',
-      data: {
-        labels: {{ stats.keys()|list|tojson }},
-        datasets: [{
-          label: 'Answers Submitted',
-          data: {{ stats.values()|list|tojson }},
-          backgroundColor: 'rgba(54, 162, 235, 0.7)'
-        }]
-      },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
-    });
+        const userActivityCtx = document.getElementById('userActivityChart');
+        const userLabels = Object.keys(userModelData);
+        const modelList = Object.keys(modelStats);
+        const datasets = modelList.map(model => ({
+            label: model,
+            data: userLabels.map(u => userModelData[u][model] || 0),
+            backgroundColor: `hsl(${Math.random()*360}, 70%, 70%)`
+        }));
+        new Chart(userActivityCtx, {
+            type: 'bar',
+            data: {
+                labels: userLabels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                scales: { x: { stacked: true }, y: { stacked: true } }
+            }
+        });
 
-    // User activity per model
-    const userModelData = {{ user_model_count|tojson }};
-    const allUsers = Object.keys(userModelData);
-    const allModels = {{ models|tojson }};
-    const modelDatasets = allModels.map((model, idx) => {
-      return {
-        label: model,
-        data: allUsers.map(user => userModelData[user][model] || 0),
-        backgroundColor: `hsl(${idx * 60}, 70%, 60%)`
-      };
-    });
+        const loginCtx = document.getElementById('loginChart');
+        new Chart(loginCtx, {
+            type: 'line',
+            data: {
+                labels: Object.keys(dailyLogins),
+                datasets: [{
+                    label: 'Logins per Day',
+                    data: Object.values(dailyLogins),
+                    fill: false,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.1
+                }]
+            }
+        });
 
-    const userModelCtx = document.getElementById('userModelChart');
-    new Chart(userModelCtx, {
-      type: 'bar',
-      data: {
-        labels: allUsers,
-        datasets: modelDatasets
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: { stacked: true },
-          y: { stacked: true, beginAtZero: true }
-        }
-      }
-    });
-
-    // Daily login graph
-    const dailyData = {{ daily_logins|tojson }};
-    const days = Object.keys(dailyData);
-    const counts = Object.values(dailyData);
-
-    const dailyCtx = document.getElementById('dailyChart');
-    new Chart(dailyCtx, {
-      type: 'line',
-      data: {
-        labels: days,
-        datasets: [{
-          label: 'Logins',
-          data: counts,
-          fill: false,
-          borderColor: 'green',
-          tension: 0.2
-        }]
-      },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
-    });
-  </script>
+        const topContributorsCtx = document.getElementById('topContributorsChart');
+        new Chart(topContributorsCtx, {
+            type: 'bar',
+            data: {
+                labels: topContributors.map(item => item[0]),
+                datasets: [{
+                    label: 'Contributions',
+                    data: topContributors.map(item => item[1]),
+                    backgroundColor: 'rgba(255, 99, 132, 0.7)'
+                }]
+            }
+        });
+    </script>
 </body>
 </html>
