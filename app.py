@@ -2,7 +2,7 @@
 
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 import jsonlines, os
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -21,7 +21,7 @@ class User(db.Model):
 class SessionLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    login_time = db.Column(db.DateTime, default=datetime.utcnow)
+    login_time = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     logout_time = db.Column(db.DateTime)
 
 # --- HELPERS ---
@@ -62,11 +62,12 @@ def home():
 def register():
     if request.method == 'POST':
         username = request.form['username']
+        if User.query.filter_by(username=username).first():
+            return "Username already exists. Try another."
         password = generate_password_hash(request.form['password'])
         db.session.add(User(username=username, password=password))
         db.session.commit()
 
-        # Save user in plain text file for persistence
         with open('backend/users.txt', 'a') as f:
             f.write(f"{username}\n")
 
@@ -105,7 +106,7 @@ def admin_dashboard():
     for model in models:
         path = f'backend/outputs/output_{model}.jsonl'
         stats[model] = len(load_jsonl(path)) if os.path.exists(path) else 0
-    return render_template('dashboard.html', stats=stats)
+    return render_template('admin_dashboard.html', stats=stats)
 
 @app.route('/get_next/<model>')
 def get_next(model):
@@ -149,7 +150,7 @@ def logout():
     if 'user_id' in session:
         last_session = SessionLog.query.filter_by(user_id=session['user_id']).order_by(SessionLog.id.desc()).first()
         if last_session:
-            last_session.logout_time = datetime.utcnow()
+            last_session.logout_time = datetime.now(timezone.utc)
             db.session.commit()
     session.clear()
     return redirect(url_for('home'))
@@ -165,7 +166,6 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
 
-        # Create default admin if not exists
         if not User.query.filter_by(username='admin').first():
             admin_user = User(
                 username='admin',
