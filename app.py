@@ -1,4 +1,4 @@
-# college_abstract_portal/app.py
+# backend/app.py
 
 from flask import Flask, render_template, request, redirect, session, url_for, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -26,10 +26,13 @@ class SessionLog(db.Model):
 
 # --- HELPERS ---
 def load_jsonl(path):
+    if not os.path.exists(path):
+        return []
     with jsonlines.open(path) as reader:
         return list(reader)
 
 def append_jsonl(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with jsonlines.open(path, mode='a') as writer:
         writer.write(data)
 
@@ -88,15 +91,15 @@ def dashboard():
         stats = {}
         models = ['gemini_flash', 'grok', 'claude']
         for model in models:
-            path = f'outputs/output_{model}.jsonl'
+            path = f'backend/outputs/output_{model}.jsonl'
             stats[model] = len(load_jsonl(path)) if os.path.exists(path) else 0
-        return render_template('admin_dashboard.html', stats=stats)
-    return render_template('user_dashboard.html', username=session['username'])
+        return render_template('dashboard.html', stats=stats)
+    return render_template('abstract_submit.html', username=session['username'])
 
 @app.route('/get_next/<model>')
 def get_next(model):
-    input_path = 'inputs/input.jsonl'
-    output_path = f'outputs/output_{model}.jsonl'
+    input_path = 'backend/inputs/input.jsonl'
+    output_path = f'backend/outputs/output_{model}.jsonl'
     abstract = get_next_abstract(input_path, output_path)
     return jsonify(abstract or {})
 
@@ -117,7 +120,7 @@ def submit(model):
         'character_count': char_count,
         'timestamp': datetime.now().isoformat()
     }
-    output_path = f'outputs/output_{model}.jsonl'
+    output_path = f'backend/outputs/output_{model}.jsonl'
     append_jsonl(output_path, entry)
     return jsonify({'status': 'success'})
 
@@ -131,9 +134,14 @@ def logout():
     session.clear()
     return redirect(url_for('home'))
 
+@app.route('/healthz')
+def healthz():
+    return 'ok', 200
+
 # --- RUN ---
 if __name__ == '__main__':
-    os.makedirs('outputs', exist_ok=True)
-    os.makedirs('inputs', exist_ok=True)
-    db.create_all()
+    os.makedirs('backend/outputs', exist_ok=True)
+    os.makedirs('backend/inputs', exist_ok=True)
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
