@@ -199,7 +199,7 @@ if __name__ == '__main__':
         if not User.query.filter_by(username='admin').first():
             admin_user = User(
                 username='admin',
-                password=generate_password_hash('admin123'),
+                password=generate_password_hash('testgptmodels'),
                 is_admin=True
             )
             db.session.add(admin_user)
