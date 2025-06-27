@@ -1,6 +1,6 @@
 # backend/app.py
 
-from flask import Flask, render_template, request, redirect, session, url_for, jsonify
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import jsonlines, os
@@ -42,6 +42,7 @@ def get_next_abstract(input_path, output_path):
     answered_ids = {entry['id'] for entry in outputs}
     for entry in inputs:
         if entry['id'] not in answered_ids:
+            entry['title'] = f"Generate an academic abstract for the paper titled with minimum 150 to 300 words {entry['title']}"
             return entry
     return None
 
@@ -64,6 +65,11 @@ def register():
         password = generate_password_hash(request.form['password'])
         db.session.add(User(username=username, password=password))
         db.session.commit()
+
+        # Save user in plain text file for persistence
+        with open('backend/users.txt', 'a') as f:
+            f.write(f"{username}\n")
+
         return redirect(url_for('login'))
     return render_template('register.html')
 
@@ -128,6 +134,15 @@ def submit(model):
     output_path = f'backend/outputs/output_{model}.jsonl'
     append_jsonl(output_path, entry)
     return jsonify({'status': 'success'})
+
+@app.route('/download/<model>', methods=['GET'])
+def download_output(model):
+    if 'user_id' not in session or not session.get('is_admin'):
+        return redirect(url_for('login'))
+    path = f'backend/outputs/output_{model}.jsonl'
+    if not os.path.exists(path):
+        return f"No output found for {model}.", 404
+    return send_file(path, as_attachment=True)
 
 @app.route('/logout')
 def logout():
