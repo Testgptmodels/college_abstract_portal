@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, session, url_for, j
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import jsonlines, os
+import os
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -144,4 +145,6 @@ if __name__ == '__main__':
     os.makedirs('backend/inputs', exist_ok=True)
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
+
