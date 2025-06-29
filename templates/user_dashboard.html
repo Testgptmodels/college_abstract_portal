@@ -74,11 +74,11 @@
     <!-- Generate Payment Section -->
     <div class="text-center">
       <button class="btn btn-primary mt-3 me-2" onclick="showFinalTable()">Generate Payment</button>
-      <button id="printReceiptBtn" class="btn btn-secondary mt-3" onclick="window.print()">Print Receipt</button>
+      <button id="printReceiptBtn" class="btn btn-secondary mt-3" onclick="window.print()" style="display: none;">Print Receipt</button>
     </div>
 
     <!-- Final Payment Table -->
-    <div id="finalPaymentTable" class="mt-4">
+    <div id="finalPaymentTable" class="mt-4" style="display: none;">
       <table class="table table-bordered">
         <thead class="table-light">
           <tr>
@@ -109,7 +109,7 @@
     </div>
 
     <!-- Receipt Section -->
-    <div id="receiptSection" class="mt-5 p-4">
+    <div id="receiptSection" class="mt-5 p-4" style="display: none;">
       <h3 class="text-center">Abstract Generation for Research</h3>
       <p><strong>Contributor:</strong> {{ username }}</p>
       <table class="table table-bordered mt-3">
@@ -169,7 +169,6 @@
     });
 
     function showFinalTable() {
-      document.getElementById('initialPaymentTable').style.display = 'none';
       document.getElementById('finalPaymentTable').style.display = 'block';
       document.getElementById('printReceiptBtn').style.display = 'inline-block';
       document.getElementById('receiptSection').style.display = 'block';
