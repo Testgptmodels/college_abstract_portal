@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit Abstract</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    #statusMessage {
+      display: none;
+    }
+  </style>
+</head>
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2>Welcome, {{ username }}</h2>
+      <div>
+        <a href="{{ url_for('user_dashboard') }}" class="btn btn-outline-primary me-2">Dashboard</a>
+        <a href="/logout" class="btn btn-outline-danger">Logout</a>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <label for="modelSelect" class="form-label">Select Model:</label>
+      <select id="modelSelect" class="form-select w-50">
+        <option value="gemini_flash">Gemini Flash 2.5</option>
+        <option value="grok">Grok</option>
+        <option value="chatgpt4o">ChatGPT-4o Mini</option>
+        <option value="claude">Claude</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Abstract Task</h5>
+        <div id="task-title" class="mb-3 text-primary"></div>
+        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Write your abstract here..."></textarea>
+        <div class="d-flex align-items-center">
+          <button id="submitBtn" class="btn btn-primary me-3">Submit</button>
+          <span id="statusMessage"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTask = null;
+
+    async function loadTask() {
+      const model = document.getElementById('modelSelect').value;
+      const res = await fetch(`/get_next/${model}`);
+      const data = await res.json();
+      if (!data.title) {
+        document.getElementById('task-title').innerText = '✅ All abstracts completed!';
+        document.getElementById('submitBtn').disabled = true;
+      } else {
+        currentTask = data;
+        document.getElementById('task-title').innerText = data.title;
+        document.getElementById('response').value = '';
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('statusMessage').style.display = 'none';
+      }
+    }
+
+    document.getElementById('modelSelect').addEventListener('change', loadTask);
+
+    document.getElementById('submitBtn').addEventListener('click', async () => {
+      const model = document.getElementById('modelSelect').value;
+      const responseText = document.getElementById('response').value.trim();
+      const wordCount = responseText.split(/\s+/).filter(Boolean).length;
+
+      const statusEl = document.getElementById('statusMessage');
+
+      if (!responseText) {
+        statusEl.textContent = '❌ Please enter a response.';
+        statusEl.style.color = 'red';
+        statusEl.style.display = 'inline';
+        return;
+      }
+
+      if (wordCount < 50) {
+        statusEl.textContent = '❌ Response must be at least 50 words.';
+        statusEl.style.color = 'red';
+        statusEl.style.display = 'inline';
+        return;
+      }
+
+      const payload = {
+        uuid: currentTask.uuid,
+        id: currentTask.id,
+        title: currentTask.title,
+        response: responseText
+      };
+
+      const res = await fetch(`/submit/${model}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      if (result.status === 'success') {
+        statusEl.textContent = '✅ Response submitted successfully';
+        statusEl.style.color = 'green';
+        statusEl.style.display = 'inline';
+        loadTask();
+      } else if (result.status === 'duplicate') {
+        statusEl.textContent = '❌ Similar response already submitted for a different title/model.';
+        statusEl.style.color = 'red';
+        statusEl.style.display = 'inline';
+      } else {
+        statusEl.textContent = '❌ Submission failed. Try again.';
+        statusEl.style.color = 'red';
+        statusEl.style.display = 'inline';
+      }
+    });
+
+    window.onload = loadTask;
+  </script>
+</body>
+</html>
