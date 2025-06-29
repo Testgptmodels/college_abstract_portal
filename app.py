@@ -32,9 +32,9 @@ def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+        confirm = request.form['confirm_password']  # ✅ Matches form field
         email = request.form['email']
         phone = request.form['phone']
-        confirm = request.form['confirm']
 
         if password != confirm:
             flash("Passwords do not match")
@@ -45,6 +45,7 @@ def register():
             if username in users:
                 flash("Username already exists")
                 return redirect(url_for('register'))
+
             users[username] = {
                 'password': generate_password_hash(password),
                 'email': email,
@@ -52,11 +53,13 @@ def register():
             }
             f.seek(0)
             json.dump(users, f, indent=2)
+            f.truncate()
 
         flash("Registration successful")
         return redirect(url_for('home'))
 
     return render_template('register.html')
+
 
 @app.route('/login', methods=['POST'])
 def login():
