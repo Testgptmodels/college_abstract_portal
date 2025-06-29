@@ -1,271 +1,212 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
+# backend/app.py
+
+from flask import Flask, render_template, request, redirect, session, url_for, jsonify, send_file, flash
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime, timezone
+import jsonlines, os, re
 from werkzeug.security import generate_password_hash, check_password_hash
-from uuid import uuid4
-from datetime import datetime
-import os, json
 from collections import defaultdict, Counter
-from flask import send_from_directory
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey'
+app.secret_key = 'your_secret_key'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite3'
+db = SQLAlchemy(app)
 
-USERS_FILE = 'users.json'
-RESPONSES_DIR = 'responses'
-MODELS = ["gemini_flash", "grok", "chatgpt_4o_mini", "claude"]
+# --- MODELS ---
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
-if not os.path.exists(USERS_FILE):
-    # Ensure admin user is always present with predefined password
-    with open(USERS_FILE, 'r+') as f:
-        users = json.load(f)
-        if 'admin' not in users:
-            users['admin'] = {
-                'password': generate_password_hash("testgptmodels"),  # ✅ Set your admin password here
-                'email': 'admin@example.com',
-                'phone': '0000000000'
-            }
-            f.seek(0)
-            json.dump(users, f, indent=2)
-            f.truncate()
+class SessionLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    login_time = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    logout_time = db.Column(db.DateTime)
 
-    
+# --- HELPERS ---
+def load_jsonl(path):
+    if not os.path.exists(path):
+        return []
+    with jsonlines.open(path) as reader:
+        return list(reader)
 
-if not os.path.exists(RESPONSES_DIR):
-    os.makedirs(RESPONSES_DIR)
-    for model in MODELS:
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'w') as f:
-            pass
+def append_jsonl(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with jsonlines.open(path, mode='a') as writer:
+        writer.write(data)
 
-@app.route('/')
+def get_next_abstract(input_path, output_path):
+    inputs = load_jsonl(input_path)
+    outputs = load_jsonl(output_path)
+    answered_ids = {entry['id'] for entry in outputs}
+    for entry in inputs:
+        if entry['id'] not in answered_ids:
+            return entry
+    return None
+
+def count_text_stats(text):
+    words = text.split()
+    sentences = text.count('.') + text.count('!') + text.count('?')
+    return len(words), sentences, len(text)
+
+# --- ROUTES ---
+@app.route('/', methods=['GET'])
 def home():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form['username']
-        password = request.form['password']
-        confirm = request.form['confirm_password']  # ✅ Matches form field
-        email = request.form['email']
-        phone = request.form['phone']
-
-        if password != confirm:
-            flash("Passwords do not match")
+        if User.query.filter_by(username=username).first():
+            flash("Username already exists. Try another.")
             return redirect(url_for('register'))
+        password = generate_password_hash(request.form['password'])
+        db.session.add(User(username=username, password=password))
+        db.session.commit()
 
-        with open(USERS_FILE, 'r+') as f:
-            users = json.load(f)
-            if username in users:
-                flash("Username already exists")
-                return redirect(url_for('register'))
+        with open('backend/users.txt', 'a') as f:
+            f.write(f"{username}\n")
 
-            users[username] = {
-                'password': generate_password_hash(password),
-                'email': email,
-                'phone': phone
-            }
-            f.seek(0)
-            json.dump(users, f, indent=2)
-            f.truncate()
-
-        flash("Registration successful")
-        return redirect(url_for('home'))
-
+        return redirect(url_for('login'))
     return render_template('register.html')
 
-
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    username = request.form['username']
-    password = request.form['password']
-    with open(USERS_FILE) as f:
-        users = json.load(f)
-    if username in users and check_password_hash(users[username]['password'], password):
-        session['username'] = username
-        if username == 'admin':
-            return redirect(url_for('admin_dashboard'))
-        return redirect(url_for('submit'))
-    flash("Invalid credentials")
-    return redirect(url_for('home'))
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['is_admin'] = user.is_admin
+            db.session.add(SessionLog(user_id=user.id))
+            db.session.commit()
+            if user.is_admin:
+                return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('dashboard'))
+        else:
+            flash("Invalid username or password.")
+            return redirect(url_for('login'))
+    return render_template('login.html')
 
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('home'))
-
-@app.route('/submit')
-def submit():
-    if 'username' not in session:
-        return redirect(url_for('home'))
+@app.route('/dashboard', methods=['GET'])
+def dashboard():
+    if 'user_id' not in session or session.get('is_admin'):
+        return redirect(url_for('login'))
     return render_template('abstract_submit.html', username=session['username'])
+
+@app.route('/admin', methods=['GET'])
+def admin_dashboard():
+    if 'user_id' not in session or not session.get('is_admin'):
+        return redirect(url_for('login'))
+
+    models = ['gemini_flash', 'grok', 'claude']
+    stats = {}
+    user_model_count = defaultdict(lambda: Counter())
+    daily_logins = defaultdict(int)
+
+    for model in models:
+        path = f'backend/outputs/output_{model}.jsonl'
+        entries = load_jsonl(path)
+        stats[model] = len(entries)
+        for entry in entries:
+            user_model_count[entry['username']][model] += 1
+
+    for session_log in SessionLog.query.all():
+        if session_log.login_time:
+            date_str = session_log.login_time.date().isoformat()
+            daily_logins[date_str] += 1
+
+    contributor_count = Counter()
+    for user, model_counts in user_model_count.items():
+        contributor_count[user] = sum(model_counts.values())
+    top_contributors = contributor_count.most_common(10)
+
+    return render_template(
+        'admin_dashboard.html',
+        stats=stats,
+        models=models,
+        user_model_count=dict(user_model_count),
+        daily_logins=dict(daily_logins),
+        top_contributors=top_contributors
+    )
 
 @app.route('/get_next/<model>')
 def get_next(model):
-    titles_file = f'data/{model}_titles.json'
-    if not os.path.exists(titles_file):
-        return jsonify({'title': None})
-    with open(titles_file) as f:
-        titles = json.load(f)
-    submitted = set()
-    user_responses = get_all_user_responses(session['username'])
-    for r in user_responses:
-        submitted.add((r['model'], r['id']))
-    for i, title in enumerate(titles):
-        if (model, i) not in submitted:
-            return jsonify({'uuid': str(uuid4()), 'id': i, 'title': title})
-    return jsonify({'title': None})
-
-def get_all_user_responses(username):
-    all_data = []
-    for model in MODELS:
-        filepath = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                for line in f:
-                    data = json.loads(line)
-                    if data.get('username') == username:
-                        all_data.append(data)
-    return all_data
+    input_path = 'backend/inputs/input.jsonl'
+    output_path = f'backend/outputs/output_{model}.jsonl'
+    abstract = get_next_abstract(input_path, output_path)
+    if abstract:
+        abstract['title'] = f"Generate an academic abstract for the paper titled with minimum 150 to 300 words \"{abstract['title']}\""
+    return jsonify(abstract or {})
 
 @app.route('/submit/<model>', methods=['POST'])
-def submit_response(model):
-    if 'username' not in session:
-        return jsonify({'status': 'error', 'message': 'Not logged in'})
-
+def submit(model):
     data = request.json
-    response = data['response'].strip()
-    word_count = len(response.split())
-
-    if word_count < 50:
-        return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
-
-    # Check for duplicate content in same or different model
-    for m in MODELS:
-        filepath = os.path.join(RESPONSES_DIR, f"{m}.jsonl")
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                for line in f:
-                    entry = json.loads(line)
-                    if entry.get('response') == response:
-                        return jsonify({'status': 'error', 'message': 'Duplicate response detected'})
-
-    output = {
+    response = data['response']
+    username = session['username']
+    word_count, sentence_count, char_count = count_text_stats(response)
+    title = re.sub(r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words \"', '', data['title'])
+    title = title.rstrip('"')
+    entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'title': data['title'],
-        'username': session['username'],
+        'title': title,
         'response': response,
         'word_count': word_count,
-        'sentence_count': response.count('.'),
-        'character_count': len(response),
-        'timestamp': datetime.utcnow().isoformat()
+        'sentence_count': sentence_count,
+        'character_count': char_count,
+        'username': username,
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
-
-    with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a') as f:
-        f.write(json.dumps(output) + '\n')
-
+    output_path = f'backend/outputs/output_{model}.jsonl'
+    append_jsonl(output_path, entry)
     return jsonify({'status': 'success'})
 
-@app.route('/user_dashboard')
-def user_dashboard():
-    if 'username' not in session:
-        return redirect(url_for('home'))
-    model_counts = []
-    for model in MODELS:
-        count = 0
-        path = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
-        with open(path) as f:
-            for line in f:
-                if json.loads(line).get("username") == session['username']:
-                    count += 1
-        model_counts.append({"name": model.replace('_', ' ').title(), "count": count})
-    return render_template("user_dashboard.html", model_counts=model_counts, username=session['username'])
+@app.route('/download/<model>', methods=['GET'])
+def download_output(model):
+    if 'user_id' not in session or not session.get('is_admin'):
+        return redirect(url_for('login'))
+    path = f'backend/outputs/output_{model}.jsonl'
+    if not os.path.exists(path):
+        return f"No output found for {model}.", 404
+    return send_file(path, as_attachment=True)
 
-@app.route('/admin')
-def admin_dashboard():
-    if 'username' not in session or session['username'] != 'admin':
-        return redirect(url_for('home'))
+@app.route('/logout')
+def logout():
+    if 'user_id' in session:
+        last_session = SessionLog.query.filter_by(user_id=session['user_id']).order_by(SessionLog.id.desc()).first()
+        if last_session:
+            last_session.logout_time = datetime.now(timezone.utc)
+            db.session.commit()
+    session.clear()
+    return redirect(url_for('home'))
 
-    # Total Answers Per Model
-    total_answers = {"labels": [], "counts": []}
-    for model in MODELS:
-        total_answers["labels"].append(model.replace("_", " ").title())
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl")) as f:
-            total_answers["counts"].append(sum(1 for _ in f))
+@app.route('/healthz')
+def healthz():
+    return 'ok', 200
 
-    # User Activity Per Model
-    user_model_activity = {"models": [m.replace('_', ' ').title() for m in MODELS], "users": []}
-    user_counts = defaultdict(lambda: [0]*len(MODELS))
-    color_cycle = ['#FF5733', '#33CFFF', '#7D3C98', '#2ECC71', '#FF33A1']
-    user_color = {}
-
-    for idx, model in enumerate(MODELS):
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl")) as f:
-            for line in f:
-                obj = json.loads(line)
-                user = obj["username"]
-                user_counts[user][idx] += 1
-
-    for i, (user, counts) in enumerate(user_counts.items()):
-        user_model_activity["users"].append({
-            "username": user,
-            "counts": counts,
-            "color": color_cycle[i % len(color_cycle)]
-        })
-
-    # Daily User Activity (Last 30 Days)
-    from datetime import timedelta
-    from collections import defaultdict
-    today = datetime.utcnow().date()
-    daily_user_activity = {"dates": [], "users": []}
-    user_daily = defaultdict(lambda: [0]*30)
-    for idx, model in enumerate(MODELS):
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl")) as f:
-            for line in f:
-                data = json.loads(line)
-                date = datetime.fromisoformat(data['timestamp']).date()
-                if (today - date).days < 30:
-                    user_daily[data['username']][29 - (today - date).days] += 1
-    for i, (user, counts) in enumerate(user_daily.items()):
-        daily_user_activity["users"].append({
-            "username": user,
-            "counts": counts,
-            "color": color_cycle[i % len(color_cycle)]
-        })
-    daily_user_activity['dates'] = [(today - timedelta(days=i)).isoformat() for i in reversed(range(30))]
-
-    # Top Contributors
-    contributor_data = []
-    for user, counts in user_counts.items():
-        total = sum(counts)
-        contributor_data.append({
-            'username': user,
-            'gemini_flash': counts[0],
-            'grok': counts[1],
-            'chatgpt_4o_mini': counts[2],
-            'claude': counts[3],
-            'total': total
-        })
-    contributor_data = sorted(contributor_data, key=lambda x: x['total'], reverse=True)
-
-    return render_template("user_dashboard.html", total_answers=total_answers, user_model_activity=user_model_activity,
-                           daily_user_activity=daily_user_activity, top_contributors=contributor_data)
-
-@app.route('/download/<model>')
-def download_model(model):
-    return send_from_directory(RESPONSES_DIR, f"{model}.jsonl", as_attachment=True)
-
-@app.route('/receipt/<username>')
-def receipt(username):
-    counts = []
-    for model in MODELS:
-        count = 0
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl")) as f:
-            for line in f:
-                if json.loads(line).get("username") == username:
-                    count += 1
-        counts.append(count)
-    return render_template("receipt.html", username=username, counts=counts, models=MODELS)
-
+# --- RUN ---
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    os.makedirs('backend/outputs', exist_ok=True)
+    os.makedirs('backend/inputs', exist_ok=True)
+    with app.app_context():
+        db.create_all()
+
+        if not User.query.filter_by(username='admin').first():
+            admin_user = User(
+                username='admin',
+                password=generate_password_hash('testgptmodels'),
+                is_admin=True
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+
+    port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
