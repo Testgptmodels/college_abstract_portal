@@ -53,9 +53,9 @@
             </tr>
           </thead>
           <tbody>
-            {% set response_total = 0 %}
+            {% set ns = namespace(total=0) %}
             {% for entry in model_counts %}
-            {% set response_total = response_total + entry.count %}
+            {% set ns.total = ns.total + entry.count %}
             <tr>
               <td>{{ loop.index }}</td>
               <td>{{ entry.name }}</td>
@@ -64,7 +64,7 @@
             {% endfor %}
             <tr class="table-warning fw-bold">
               <td colspan="2" class="text-end">Total</td>
-              <td>{{ response_total }}</td>
+              <td>{{ ns.total }}</td>
             </tr>
           </tbody>
         </table>
