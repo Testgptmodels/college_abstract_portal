@@ -14,8 +14,20 @@ RESPONSES_DIR = 'responses'
 MODELS = ["gemini_flash", "grok", "chatgpt_4o_mini", "claude"]
 
 if not os.path.exists(USERS_FILE):
-    with open(USERS_FILE, 'w') as f:
-        json.dump({}, f)
+    # Ensure admin user is always present with predefined password
+    with open(USERS_FILE, 'r+') as f:
+        users = json.load(f)
+        if 'admin' not in users:
+            users['admin'] = {
+                'password': generate_password_hash("testgptmodels"),  # ✅ Set your admin password here
+                'email': 'admin@example.com',
+                'phone': '0000000000'
+            }
+            f.seek(0)
+            json.dump(users, f, indent=2)
+            f.truncate()
+
+    
 
 if not os.path.exists(RESPONSES_DIR):
     os.makedirs(RESPONSES_DIR)
