@@ -54,10 +54,10 @@
           </thead>
           <tbody>
             {% set total = 0 %}
-            {% for i, entry in enumerate(model_counts) %}
+            {% for entry in model_counts %}
             {% set total = total + entry.count %}
             <tr>
-              <td>{{ i + 1 }}</td>
+              <td>{{ loop.index }}</td>
               <td>{{ entry.name }}</td>
               <td>{{ entry.count }}</td>
             </tr>
@@ -90,11 +90,11 @@
         </thead>
         <tbody>
           {% set total = 0 %}
-          {% for i, entry in enumerate(model_counts) %}
+          {% for entry in model_counts %}
           {% set subtotal = entry.count * 0.10 %}
           {% set total = total + subtotal %}
           <tr>
-            <td>{{ i + 1 }}</td>
+            <td>{{ loop.index }}</td>
             <td>{{ entry.name }}</td>
             <td>{{ entry.count }}</td>
             <td>₹{{ '%.2f' % subtotal }}</td>
@@ -123,11 +123,11 @@
         </thead>
         <tbody>
           {% set total = 0 %}
-          {% for i, entry in enumerate(model_counts) %}
+          {% for entry in model_counts %}
           {% set subtotal = entry.count * 0.10 %}
           {% set total = total + subtotal %}
           <tr>
-            <td>{{ i + 1 }}</td>
+            <td>{{ loop.index }}</td>
             <td>{{ entry.name }}</td>
             <td>{{ entry.count }}</td>
             <td>₹{{ '%.2f' % subtotal }}</td>
