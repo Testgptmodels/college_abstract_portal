@@ -141,7 +141,7 @@ def count_text_stats(text):
 
 
 @app.route('/submit/<model>', methods=['POST'])
-def submit_abstract(model):  # changed from `submit` to `submit_abstract`
+def submit_response(model):  # changed from `submit` to `submit_abstract`
     if 'username' not in session:
         return jsonify({'status': 'error', 'message': 'Not logged in'})
 
