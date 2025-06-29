@@ -141,7 +141,7 @@ def count_text_stats(text):
 
 
 @app.route('/submit/<model>', methods=['POST'])
-def submit(model):
+def submit_abstract(model):  # changed from `submit` to `submit_abstract`
     if 'username' not in session:
         return jsonify({'status': 'error', 'message': 'Not logged in'})
 
@@ -150,28 +150,29 @@ def submit(model):
     if len(response.split()) < 50:
         return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
 
-    # Check duplicate across all model files
+    # Check duplicate across all models
     for m in MODELS:
         path = os.path.join(RESPONSES_DIR, f"{m}.jsonl")
         if os.path.exists(path):
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    existing = json.loads(line)
-                    if existing.get('response') == response:
+                    entry = json.loads(line)
+                    if entry.get('response') == response:
                         return jsonify({'status': 'duplicate'})
 
-    # Clean title
+    # Clean the title
     title = re.sub(
         r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words \"',
         '', data['title']
     ).rstrip('"')
 
-    # Compute stats
+    # Get stats
     word_count, sentence_count, char_count = count_text_stats(response)
 
+    # Save response
     entry = {
         'uuid': data['uuid'],
-        'id': data['id'],  # same as input.jsonl ID
+        'id': data['id'],
         'title': title,
         'response': response,
         'word_count': word_count,
@@ -187,6 +188,7 @@ def submit(model):
         f.write(json.dumps(entry) + '\n')
 
     return jsonify({'status': 'success'})
+
 
 
 @app.route('/user_dashboard')
