@@ -133,24 +133,17 @@ def get_all_user_responses(username):
                         all_data.append(data)
     return all_data
 
-def count_text_stats(text):
-    word_count = len(text.split())
-    sentence_count = text.count('.') + text.count('!') + text.count('?')
-    char_count = len(text)
-    return word_count, sentence_count, char_count
-
-
 @app.route('/submit/<model>', methods=['POST'])
-def submit(model):  # changed from `submit` to `submit_abstract`
+def submit_response(model):
     if 'username' not in session:
         return jsonify({'status': 'error', 'message': 'Not logged in'})
 
     data = request.json
     response = data['response'].strip()
+
     if len(response.split()) < 50:
         return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
 
-    # Check duplicate across all models
     for m in MODELS:
         path = os.path.join(RESPONSES_DIR, f"{m}.jsonl")
         if os.path.exists(path):
@@ -158,38 +151,30 @@ def submit(model):  # changed from `submit` to `submit_abstract`
                 for line in f:
                     entry = json.loads(line)
                     if entry.get('response') == response:
-                        return jsonify({'status': 'duplicate'})
+                        return jsonify({'status': 'error', 'message': 'Duplicate response detected'})
 
-    # Clean the title
-    title = re.sub(
-        r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words \"',
-        '', data['title']
-    ).rstrip('"')
+    title = re.sub(r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words \"', '', data['title']).rstrip('"')
+    word_count = len(response.split())
+    sentence_count = response.count('.') + response.count('!') + response.count('?')
+    char_count = len(response)
 
-    # Get stats
-    word_count, sentence_count, char_count = count_text_stats(response)
-
-    # Save response
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
         'title': title,
+        'username': session['username'],
+        'model': model,
         'response': response,
         'word_count': word_count,
         'sentence_count': sentence_count,
         'character_count': char_count,
-        'username': session['username'],
-        'timestamp': datetime.now(timezone.utc).isoformat()
+        'timestamp': datetime.utcnow().isoformat()
     }
 
-    output_path = os.path.join('backend/outputs', f'output_{model}.jsonl')
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'a', encoding='utf-8') as f:
+    with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a', encoding='utf-8') as f:
         f.write(json.dumps(entry) + '\n')
 
     return jsonify({'status': 'success'})
-
-
 
 @app.route('/user_dashboard')
 def user_dashboard():
