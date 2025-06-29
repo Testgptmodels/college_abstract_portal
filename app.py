@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from werkzeug.security import generate_password_hash, check_password_hash
 from uuid import uuid4
 from datetime import datetime, timedelta
-import os, json
+import os, json, re
 from collections import defaultdict, Counter
 from flask import send_from_directory
 
@@ -133,45 +133,61 @@ def get_all_user_responses(username):
                         all_data.append(data)
     return all_data
 
+def count_text_stats(text):
+    word_count = len(text.split())
+    sentence_count = text.count('.') + text.count('!') + text.count('?')
+    char_count = len(text)
+    return word_count, sentence_count, char_count
+
+
 @app.route('/submit/<model>', methods=['POST'])
-def submit_response(model):
+def submit(model):
     if 'username' not in session:
         return jsonify({'status': 'error', 'message': 'Not logged in'})
 
     data = request.json
     response = data['response'].strip()
-    word_count = len(response.split())
-
-    if word_count < 50:
+    if len(response.split()) < 50:
         return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
 
-    # Check for duplicate content in same or different model regardless of title
+    # Check duplicate across all model files
     for m in MODELS:
-        filepath = os.path.join(RESPONSES_DIR, f"{m}.jsonl")
-        if os.path.exists(filepath):
-            with open(filepath) as f:
+        path = os.path.join(RESPONSES_DIR, f"{m}.jsonl")
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    entry = json.loads(line)
-                    if entry.get('response') == response:
-                        return jsonify({'status': 'error', 'message': 'Duplicate response detected'})
+                    existing = json.loads(line)
+                    if existing.get('response') == response:
+                        return jsonify({'status': 'duplicate'})
 
-    output = {
+    # Clean title
+    title = re.sub(
+        r'^Generate an academic abstract for the paper titled with minimum 150 to 300 words \"',
+        '', data['title']
+    ).rstrip('"')
+
+    # Compute stats
+    word_count, sentence_count, char_count = count_text_stats(response)
+
+    entry = {
         'uuid': data['uuid'],
-        'id': data['id'],
-        'title': data['title'],
-        'username': session['username'],
-        'model': model,
+        'id': data['id'],  # same as input.jsonl ID
+        'title': title,
         'response': response,
         'word_count': word_count,
-        'sentence_count': response.count('.'),
-        'character_count': len(response),
-        'timestamp': datetime.utcnow().isoformat()
+        'sentence_count': sentence_count,
+        'character_count': char_count,
+        'username': session['username'],
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
 
-    with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a') as f:
-        f.write(json.dumps(output) + '\n')
+    output_path = os.path.join('backend/outputs', f'output_{model}.jsonl')
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry) + '\n')
 
     return jsonify({'status': 'success'})
+
 
 @app.route('/user_dashboard')
 def user_dashboard():
