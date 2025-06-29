@@ -112,10 +112,10 @@ def get_next(model):
         submitted.add((r['model'], r['id']))
 
     for i, entry in enumerate(titles):
-        if (model, i) not in submitted:
+        if (model, entry.get('id', i)) not in submitted:
             return jsonify({
                 'uuid': str(uuid4()),
-                'id': i,
+                'id': entry.get('id', i),
                 'title': f"Generate an academic abstract for the paper titled with minimum 150 to 300 words \"{entry['title']}\""
             })
 
@@ -161,10 +161,10 @@ def submit_response(model):
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'title': title,
-        'username': session['username'],
-        'model': model,
+        'title': title,      
         'response': response,
+        'model': model,
+        'username': session['username'],
         'word_count': word_count,
         'sentence_count': sentence_count,
         'character_count': char_count,
