@@ -8,23 +8,8 @@
   <style>
     #initialPaymentTable,
     #finalPaymentTable,
-    #printReceiptBtn,
-    #receiptSection {
+    #printReceiptBtn {
       display: none;
-    }
-
-    @media print {
-      body * {
-        visibility: hidden;
-      }
-      #receiptSection, #receiptSection * {
-        visibility: visible;
-      }
-      #receiptSection {
-        position: absolute;
-        left: 0;
-        top: 0;
-      }
     }
   </style>
 </head>
@@ -89,10 +74,10 @@
           </tr>
         </thead>
         <tbody>
-          {% set payment_total = 0 %}
+          {% set ns = namespace(payment_total=0) %}
           {% for entry in model_counts %}
           {% set subtotal = entry.count * 0.10 %}
-          {% set payment_total = payment_total + subtotal %}
+          {% set ns.payment_total = ns.payment_total + subtotal %}
           <tr>
             <td>{{ loop.index }}</td>
             <td>{{ entry.name }}</td>
@@ -102,40 +87,7 @@
           {% endfor %}
           <tr class="table-warning fw-bold">
             <td colspan="3" class="text-end">Total Payment</td>
-            <td>₹{{ '%.2f' % payment_total }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Receipt Section -->
-    <div id="receiptSection" class="mt-5 p-4" style="display: none;">
-      <h3 class="text-center">Abstract Generation for Research</h3>
-      <p><strong>Contributor:</strong> {{ username }}</p>
-      <table class="table table-bordered mt-3">
-        <thead class="table-light">
-          <tr>
-            <th>Sl. No</th>
-            <th>Model</th>
-            <th>Responses</th>
-            <th>Cost (₹)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% set receipt_total = 0 %}
-          {% for entry in model_counts %}
-          {% set subtotal = entry.count * 0.10 %}
-          {% set receipt_total = receipt_total + subtotal %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td>{{ entry.name }}</td>
-            <td>{{ entry.count }}</td>
-            <td>₹{{ '%.2f' % subtotal }}</td>
-          </tr>
-          {% endfor %}
-          <tr class="table-warning fw-bold">
-            <td colspan="3" class="text-end">Total Payment</td>
-            <td>₹{{ '%.2f' % receipt_total }}</td>
+            <td>₹{{ '%.2f' % ns.payment_total }}</td>
           </tr>
         </tbody>
       </table>
@@ -171,7 +123,6 @@
     function showFinalTable() {
       document.getElementById('finalPaymentTable').style.display = 'block';
       document.getElementById('printReceiptBtn').style.display = 'inline-block';
-      document.getElementById('receiptSection').style.display = 'block';
     }
   </script>
 </body>
