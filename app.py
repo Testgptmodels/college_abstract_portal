@@ -1,10 +1,13 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file, send_from_directory
+# app.py
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from uuid import uuid4
 from datetime import datetime, timedelta
 import jsonlines, os, json, re
-from collections import defaultdict
+from collections import defaultdict, Counter
+from flask import send_from_directory
+import difflib
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -131,6 +134,35 @@ def get_next(model):
 
     return jsonify({'title': None})
 
+def show_diff(base, edited, similarity_threshold=0.85):
+    base_words = base.split()
+    edited_words = edited.split()
+    diff = difflib.ndiff(base_words, edited_words)
+
+    added, removed, unchanged = [], [], []
+    for line in diff:
+        if line.startswith('+ '): added.append(line[2:])
+        elif line.startswith('- '): removed.append(line[2:])
+        elif line.startswith('  '): unchanged.append(line[2:])
+
+    ratio = difflib.SequenceMatcher(None, base, edited).ratio()
+
+    if ratio > similarity_threshold:
+        return {
+            "status": "duplicate",
+            "message": "Duplicate or similar response.",
+            "diff": {
+                "added": added,
+                "removed": removed,
+                "unchanged": unchanged[:10]
+            }
+        }
+    else:
+        return {
+            "status": "unique",
+            "message": "Answer is unique."
+        }
+
 @app.route('/submit/<model>', methods=['POST'])
 def submit_response(model):
     if 'username' not in session:
@@ -148,11 +180,16 @@ def submit_response(model):
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     entry = json.loads(line)
-                    if entry.get('response') == response:
-                        return jsonify({'status': 'error', 'message': 'Duplicate response detected'})
+                    base = entry.get('response', '')
+                    diff_result = show_diff(base, response)
+                    if diff_result['status'] == 'duplicate':
+                        return jsonify({
+                            'status': 'duplicate',
+                            'message': diff_result['message'],
+                            'diff': diff_result['diff']
+                        })
 
-    title = re.sub(r'^Prompt Template: Generate a concise academic abstract of 150 to 300 words on the topic \"', '', data['title']).rstrip('". Do not include the title in the output. Maintain a formal academic tone with a focus on clarity, objectivity, and technical accuracy. Exclude any suggestions, conversational elements, or framing language. Present only the abstract text.')
-
+    title = re.sub(r'^Generate a concise academic abstract of 150 to 300 words on the topic \"', '', data['title']).rstrip('".')
     word_count = len(response.split())
     sentence_count = response.count('.') + response.count('!') + response.count('?')
     char_count = len(response)
@@ -160,7 +197,7 @@ def submit_response(model):
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'title': title,
+        'title': title,      
         'response': response,
         'model': model,
         'username': session['username'],
@@ -175,33 +212,7 @@ def submit_response(model):
 
     return jsonify({'status': 'success'})
 
-import difflib
-
-def show_diff(base, edited, similarity_threshold=0.85):
-    base_words = base.split()
-    edited_words = edited.split()
-
-    matcher = difflib.SequenceMatcher(None, base_words, edited_words)
-    similarity_ratio = matcher.ratio()
-
-    # If very different (below threshold), consider it unique
-    if similarity_ratio < similarity_threshold:
-        print("✅ This is a unique answer.\n")
-        return
-
-    # Otherwise, show detailed diffs (edited version of base)
-    diff = difflib.ndiff(base_words, edited_words)
-    added = []
-    removed = []
-    for line in diff:
-        if line.startswith('+ '):
-            added.append(line[2:])
-        elif line.startswith('- '):
-            removed.append(line[2:])
-
-    print("🔴 This is an edited version of an existing answer (similarity {:.2f})".format(similarity_ratio))
-    print("\n🔵 Added words:\n" + (' '.join(added) if added else "None"))
-    print("\n🔴 Removed words:\n" + (' '.join(removed) if removed else "None"))
+# (Other routes are unchanged, but similar modifications can be made to integrate Copilot and new prompt templates.)
 
 
 @app.route('/user_dashboard')
@@ -291,9 +302,9 @@ def download_model(model):
 def receipt(username):
     # Static admin details
     admin_info = {
-        "name": "Prof. A. I. Model",
-        "email": "admin@example.com",
-        "phone": "9876543210"
+        "name": "Ambrish G",
+        "email": "testgptmodels@gmail.com",
+        "phone": "0000000000"
     }
 
     # Load user info from users.json
@@ -307,7 +318,7 @@ def receipt(username):
     # Count abstracts per model
     counts = []
     items = []
-    price_per_abstract = 1  # You can change this to any value
+    price_per_abstract = 0.1  # You can change this to any value
     for model in MODELS:
         count = 0
         path = os.path.join(RESPONSES_DIR, f"{model}.jsonl")

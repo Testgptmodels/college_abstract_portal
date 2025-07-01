@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Submit Abstract</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
   <style>
     #statusMessage {
       display: none;
@@ -28,7 +28,7 @@
         <option value="grok">Grok</option>
         <option value="chatgpt_4o_mini">ChatGPT-4o Mini</option>
         <option value="claude">Claude</option>
-        <option value="claude">Microsoft - Copilot</option>
+        <option value="microsoft_copilot">Microsoft Copilot</option>
       </select>
     </div>
 
@@ -39,7 +39,7 @@
         <textarea id="response" class="form-control mb-3" rows="10" placeholder="Write your abstract here..."></textarea>
         <div class="d-flex align-items-center">
           <button id="submitBtn" class="btn btn-primary me-3">Submit</button>
-          <span id="statusMessage"></span>
+          <span id="statusMessage" class="fw-bold"></span>
         </div>
       </div>
     </div>
@@ -69,9 +69,8 @@
     document.getElementById('submitBtn').addEventListener('click', async () => {
       const model = document.getElementById('modelSelect').value;
       const responseText = document.getElementById('response').value.trim();
-      const wordCount = responseText.split(/\s+/).filter(Boolean).length;
-
       const statusEl = document.getElementById('statusMessage');
+      const wordCount = responseText.split(/\s+/).filter(Boolean).length;
 
       if (!responseText) {
         statusEl.textContent = '❌ Please enter a response.';
@@ -101,15 +100,17 @@
       });
 
       const result = await res.json();
+
       if (result.status === 'success') {
         statusEl.textContent = '✅ Response submitted successfully';
         statusEl.style.color = 'green';
         statusEl.style.display = 'inline';
         loadTask();
       } else if (result.status === 'duplicate') {
-        statusEl.textContent = '❌ Similar response already submitted for a different title/model.';
-        statusEl.style.color = 'red';
+        statusEl.textContent = '❌ Similar response already exists.';
+        statusEl.style.color = 'orange';
         statusEl.style.display = 'inline';
+        console.log('Duplicate details:', result.diff);
       } else {
         statusEl.textContent = '❌ Submission failed. Try again.';
         statusEl.style.color = 'red';
