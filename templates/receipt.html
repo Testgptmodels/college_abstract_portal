@@ -74,15 +74,15 @@
     <table>
         <tr>
             <td class="no-border" colspan="4" style="text-align:right;"><strong>Amount:</strong></td>
-            <td>{{ amount }}</td>
+             <td>{{ "%.2f"|format(amount) }}</td>
         </tr>
         <tr>
             <td class="no-border" colspan="4" style="text-align:right;"><strong>Additional Charges:</strong></td>
-            <td>{{ additional_charges }}</td>
+            <td>{{ "%.2f"|format(additional_charges) }}</td>
         </tr>
         <tr>
             <td class="no-border" colspan="4" style="text-align:right;"><strong>Total:</strong></td>
-            <td><strong>{{ total }}</strong></td>
+             <td><strong>{{ "%.2f"|format(total) }}</strong></td>
         </tr>
     </table>
 

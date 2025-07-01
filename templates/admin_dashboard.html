@@ -59,6 +59,7 @@
               <th>Grok</th>
               <th>ChatGPT 4o Mini</th>
               <th>Claude</th>
+              <th>Microsoft Copilot</th> <!-- ✅ Add this line -->
               <th>Total</th>
               <th>Receipt</th>
             </tr>
@@ -72,7 +73,8 @@
               <td>{{ contributor.grok }}</td>
               <td>{{ contributor.chatgpt_4o_mini }}</td>
               <td>{{ contributor.claude }}</td>
-              <td>{{ contributor.total }}</td>
+              <td>{{ contributor.copilot }}</td> <!-- ✅ Add this -->
+              <td><strong>{{ contributor.total }}</strong></td>
               <td>
                 <a href="{{ url_for('receipt', username=contributor.username) }}" class="btn btn-sm btn-primary">Receipt</a>
               </td>
@@ -91,7 +93,8 @@
       <a href="{{ url_for('download_model', model='gemini_flash') }}" class="btn btn-outline-secondary me-2">Download Gemini Flash</a>
       <a href="{{ url_for('download_model', model='grok') }}" class="btn btn-outline-secondary me-2">Download Grok</a>
       <a href="{{ url_for('download_model', model='chatgpt_4o_mini') }}" class="btn btn-outline-secondary me-2">Download ChatGPT 4o Mini</a>
-      <a href="{{ url_for('download_model', model='claude') }}" class="btn btn-outline-secondary">Download Claude</a>
+      <a href="{{ url_for('download_model', model='claude') }}" class="btn btn-outline-secondary me-2">Download Claude</a>
+      <a href="{{ url_for('download_model', model='copilot') }}" class="btn btn-outline-secondary me-2">Download Microsoft Copilot</a>
     </div>
   </div>
 </div>

@@ -286,6 +286,7 @@ def admin_dashboard():
             'grok': counts[1],
             'chatgpt_4o_mini': counts[2],
             'claude': counts[3],
+            'copilot': counts[4],
             'total': total
         })
     contributor_data = sorted(contributor_data, key=lambda x: x['total'], reverse=True)
