@@ -2,3 +2,7 @@ Flask
 Flask-SQLAlchemy
 Werkzeug
 jsonlines
+uuid
+gunicorn 
+jinja2               
+requests
