@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Submit Abstract</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
     #statusMessage {
       display: none;
+    }
+    .copy-btn {
+      cursor: pointer;
     }
   </style>
 </head>
@@ -28,7 +31,7 @@
         <option value="grok">Grok</option>
         <option value="chatgpt_4o_mini">ChatGPT-4o Mini</option>
         <option value="claude">Claude</option>
-        <option value="copilot">Microsoft Copilot</option>
+        <option value="copilot">Microsoft - Copilot</option>
       </select>
     </div>
 
@@ -36,10 +39,11 @@
       <div class="card-body">
         <h5 class="card-title">Abstract Task</h5>
         <div id="task-title" class="mb-3 text-primary"></div>
-        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Write your abstract here..."></textarea>
+        <button class="btn btn-sm btn-outline-secondary mb-3 copy-btn" onclick="copyTitle()">📋 Copy Title</button>
+        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Include the title and write your abstract here..."></textarea>
         <div class="d-flex align-items-center">
           <button id="submitBtn" class="btn btn-primary me-3">Submit</button>
-          <span id="statusMessage" class="fw-bold"></span>
+          <span id="statusMessage"></span>
         </div>
       </div>
     </div>
@@ -57,11 +61,20 @@
         document.getElementById('submitBtn').disabled = true;
       } else {
         currentTask = data;
-        document.getElementById('task-title').innerText = data.title;
-        document.getElementById('response').value = '';
+        const fullPrompt = data.title;
+        const taskTitle = fullPrompt.match(/\"(.*?)\"/)[1];
+        document.getElementById('task-title').innerText = taskTitle;
+        document.getElementById('response').value = `${taskTitle}\n\n`;
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('statusMessage').style.display = 'none';
       }
+    }
+
+    function copyTitle() {
+      const taskTitle = document.getElementById('task-title').innerText;
+      navigator.clipboard.writeText(taskTitle).then(() => {
+        alert('📋 Title copied to clipboard!');
+      });
     }
 
     document.getElementById('modelSelect').addEventListener('change', loadTask);
@@ -69,8 +82,8 @@
     document.getElementById('submitBtn').addEventListener('click', async () => {
       const model = document.getElementById('modelSelect').value;
       const responseText = document.getElementById('response').value.trim();
-      const statusEl = document.getElementById('statusMessage');
       const wordCount = responseText.split(/\s+/).filter(Boolean).length;
+      const statusEl = document.getElementById('statusMessage');
 
       if (!responseText) {
         statusEl.textContent = '❌ Please enter a response.';
@@ -81,6 +94,15 @@
 
       if (wordCount < 50) {
         statusEl.textContent = '❌ Response must be at least 50 words.';
+        statusEl.style.color = 'red';
+        statusEl.style.display = 'inline';
+        return;
+      }
+
+      const enteredTitle = responseText.split('\n')[0].trim();
+      const actualTitle = document.getElementById('task-title').innerText.trim();
+      if (enteredTitle.toLowerCase() !== actualTitle.toLowerCase()) {
+        statusEl.textContent = '❌ The first line of your response must exactly match the title.';
         statusEl.style.color = 'red';
         statusEl.style.display = 'inline';
         return;
@@ -100,17 +122,15 @@
       });
 
       const result = await res.json();
-
       if (result.status === 'success') {
         statusEl.textContent = '✅ Response submitted successfully';
         statusEl.style.color = 'green';
         statusEl.style.display = 'inline';
         loadTask();
       } else if (result.status === 'duplicate') {
-        statusEl.textContent = '❌ Similar response already exists.';
-        statusEl.style.color = 'orange';
+        statusEl.textContent = '❌ Similar response already submitted for a different title/model.';
+        statusEl.style.color = 'red';
         statusEl.style.display = 'inline';
-        console.log('Duplicate details:', result.diff);
       } else {
         statusEl.textContent = '❌ Submission failed. Try again.';
         statusEl.style.color = 'red';
