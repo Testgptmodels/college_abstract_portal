@@ -170,6 +170,11 @@ def submit_response(model):
 
     data = request.json
     response = data['response'].strip()
+    expected_title = data['title'].strip()
+
+    if not response.startswith(expected_title):
+        return jsonify({'status': 'error', 'message': 'First line must match the title exactly.'})
+
 
     if len(response.split()) < 50:
         return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
@@ -197,7 +202,7 @@ def submit_response(model):
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'title': title,      
+        'title': expected_title,
         'response': response,
         'model': model,
         'username': session['username'],
