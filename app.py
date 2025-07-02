@@ -125,7 +125,7 @@ def get_next(model):
     for i, entry in enumerate(titles):
         title_id = entry.get('id', i)
         if title_id not in used_ids:
-            prompt = f'Title: {entry["title"]}\n\nPrompt Template: Generate a concise academic abstract of 150 to 300 words. Maintain a formal academic tone with a focus on clarity, objectivity, and technical accuracy. Exclude any suggestions, conversational elements, or framing language. Start the abstract by printing the abstract title in first line then Present only the abstract text.'
+            prompt = f'Prompt Template: Generate a concise academic abstract of 150 to 300 words on the topic "{entry["title"]}". Do include the title in the output. Maintain a formal academic tone with a focus on clarity, objectivity, and technical accuracy. Exclude any suggestions, conversational elements, or framing language. tart the abstract by printing the abstract title in first line then Present only the abstract text'
             return jsonify({
                 'uuid': str(uuid4()),
                 'id': title_id,
