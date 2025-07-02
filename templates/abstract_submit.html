@@ -94,7 +94,7 @@
       try {
         const text = await navigator.clipboard.readText();
         if (text.trim() === lastPaste.trim()) {
-          showToast('❌ Same content already pasted.', 'danger');
+          showToast('❌ Same content already pasted. Press clear ', 'danger');
           return;
         }
         document.getElementById('response').value = text.trim();
@@ -108,7 +108,7 @@
     document.getElementById('clearBtn').addEventListener('click', () => {
       document.getElementById('response').value = '';
       lastPaste = '';
-      showToast('🗑 Cleared successfully.', 'info');
+      showToast('🗑 Cleared successfully.' , 'info');
     });
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
