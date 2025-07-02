@@ -1,16 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Submit Abstract</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
   <style>
     #statusMessage {
       display: none;
     }
-    #copyBtn {
-      margin-left: 10px;
+    #copyToast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
     }
   </style>
 </head>
@@ -31,7 +34,7 @@
         <option value="grok">Grok</option>
         <option value="chatgpt_4o_mini">ChatGPT-4o Mini</option>
         <option value="claude">Claude</option>
-        <option value="copilot">Microsoft - Copilot</option>
+        <option value="copilot">Microsoft Copilot</option>
       </select>
     </div>
 
@@ -40,17 +43,29 @@
         <h5 class="card-title">Abstract Task</h5>
         <div class="d-flex align-items-center mb-3">
           <div id="task-title" class="text-primary flex-grow-1 fw-bold"></div>
-          <button id="copyBtn" class="btn btn-outline-secondary btn-sm">Copy Title</button>
+          <button id="copyTitleBtn" class="btn btn-outline-secondary btn-sm ms-2">📋 Copy Title</button>
         </div>
-        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Write your abstract here. Begin the first line with the prompt title..."></textarea>
+        <textarea id="response" class="form-control mb-2" rows="10" placeholder="Write your abstract here..."></textarea>
+        <button id="pasteBtn" class="btn btn-outline-secondary btn-sm mb-3">📥 Paste into Response</button>
         <div class="d-flex align-items-center">
           <button id="submitBtn" class="btn btn-primary me-3">Submit</button>
-          <span id="statusMessage"></span>
+          <span id="statusMessage" class="fw-bold"></span>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- Toast Notification -->
+  <div id="copyToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body">
+        📋 Title copied to clipboard!
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     let currentTask = null;
 
@@ -63,7 +78,7 @@
         document.getElementById('submitBtn').disabled = true;
       } else {
         currentTask = data;
-        document.getElementById('task-title').innerText = data.original_title;
+        document.getElementById('task-title').innerText = data.title;
         document.getElementById('response').value = '';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('statusMessage').style.display = 'none';
@@ -72,16 +87,25 @@
 
     document.getElementById('modelSelect').addEventListener('change', loadTask);
 
-    document.getElementById('copyBtn').addEventListener('click', () => {
+    document.getElementById('copyTitleBtn').addEventListener('click', () => {
       const titleText = document.getElementById('task-title').innerText;
-      navigator.clipboard.writeText(titleText);
+      navigator.clipboard.writeText(titleText).then(() => {
+        const toastEl = document.getElementById('copyToast');
+        const toast = new bootstrap.Toast(toastEl);
+        toast.show();
+      });
+    });
+
+    document.getElementById('pasteBtn').addEventListener('click', async () => {
+      const text = await navigator.clipboard.readText();
+      document.getElementById('response').value = text;
     });
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
       const model = document.getElementById('modelSelect').value;
       const responseText = document.getElementById('response').value.trim();
-      const wordCount = responseText.split(/\s+/).filter(Boolean).length;
       const statusEl = document.getElementById('statusMessage');
+      const wordCount = responseText.split(/\s+/).filter(Boolean).length;
 
       if (!responseText) {
         statusEl.textContent = '❌ Please enter a response.';
@@ -97,23 +121,10 @@
         return;
       }
 
-      const responseLines = responseText.split('\n').map(line => line.trim()).filter(Boolean);
-      const firstLine = responseLines[0] || '';
-      const titleText = document.getElementById('task-title').innerText.trim();
-
-      const normalize = str => str.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30);
-
-      if (!normalize(firstLine).includes(normalize(titleText))) {
-        statusEl.textContent = '❌ The first line must include the correct prompt title.';
-        statusEl.style.color = 'red';
-        statusEl.style.display = 'inline';
-        return;
-      }
-
       const payload = {
         uuid: currentTask.uuid,
         id: currentTask.id,
-        title: titleText,
+        title: currentTask.title,
         response: responseText
       };
 
@@ -124,15 +135,17 @@
       });
 
       const result = await res.json();
+
       if (result.status === 'success') {
         statusEl.textContent = '✅ Response submitted successfully';
         statusEl.style.color = 'green';
         statusEl.style.display = 'inline';
         loadTask();
       } else if (result.status === 'duplicate') {
-        statusEl.textContent = '❌ Similar response already submitted for a different title/model.';
-        statusEl.style.color = 'red';
+        statusEl.textContent = '❌ Similar response already exists.';
+        statusEl.style.color = 'orange';
         statusEl.style.display = 'inline';
+        console.log('Duplicate details:', result.diff);
       } else {
         statusEl.textContent = result.message || '❌ Submission failed. Try again.';
         statusEl.style.color = 'red';
