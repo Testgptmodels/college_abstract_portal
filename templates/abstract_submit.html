@@ -9,8 +9,8 @@
     #statusMessage {
       display: none;
     }
-    .copy-btn {
-      cursor: pointer;
+    #copyBtn {
+      margin-left: 10px;
     }
   </style>
 </head>
@@ -38,9 +38,11 @@
     <div class="card">
       <div class="card-body">
         <h5 class="card-title">Abstract Task</h5>
-        <div id="task-title" class="mb-3 text-primary"></div>
-        <button class="btn btn-sm btn-outline-secondary mb-3 copy-btn" onclick="copyTitle()">📋 Copy Title</button>
-        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Include the title and write your abstract here..."></textarea>
+        <div class="d-flex align-items-center mb-3">
+          <div id="task-title" class="text-primary flex-grow-1 fw-bold"></div>
+          <button id="copyBtn" class="btn btn-outline-secondary btn-sm">Copy Title</button>
+        </div>
+        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Write your abstract here. Begin the first line with the prompt title..."></textarea>
         <div class="d-flex align-items-center">
           <button id="submitBtn" class="btn btn-primary me-3">Submit</button>
           <span id="statusMessage"></span>
@@ -61,23 +63,19 @@
         document.getElementById('submitBtn').disabled = true;
       } else {
         currentTask = data;
-        const fullPrompt = data.title;
-        const taskTitle = fullPrompt.match(/\"(.*?)\"/)[1];
-        document.getElementById('task-title').innerText = taskTitle;
-        document.getElementById('response').value = `${taskTitle}\n\n`;
+        document.getElementById('task-title').innerText = data.original_title;
+        document.getElementById('response').value = '';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('statusMessage').style.display = 'none';
       }
     }
 
-    function copyTitle() {
-      const taskTitle = document.getElementById('task-title').innerText;
-      navigator.clipboard.writeText(taskTitle).then(() => {
-        alert('📋 Title copied to clipboard!');
-      });
-    }
-
     document.getElementById('modelSelect').addEventListener('change', loadTask);
+
+    document.getElementById('copyBtn').addEventListener('click', () => {
+      const titleText = document.getElementById('task-title').innerText;
+      navigator.clipboard.writeText(titleText);
+    });
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
       const model = document.getElementById('modelSelect').value;
@@ -99,10 +97,14 @@
         return;
       }
 
-      const enteredTitle = responseText.split('\n')[0].trim();
-      const actualTitle = document.getElementById('task-title').innerText.trim();
-      if (enteredTitle.toLowerCase() !== actualTitle.toLowerCase()) {
-        statusEl.textContent = '❌ The first line of your response must exactly match the title.';
+      const responseLines = responseText.split('\n').map(line => line.trim()).filter(Boolean);
+      const firstLine = responseLines[0] || '';
+      const titleText = document.getElementById('task-title').innerText.trim();
+
+      const normalize = str => str.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30);
+
+      if (!normalize(firstLine).includes(normalize(titleText))) {
+        statusEl.textContent = '❌ The first line must include the correct prompt title.';
         statusEl.style.color = 'red';
         statusEl.style.display = 'inline';
         return;
@@ -111,7 +113,7 @@
       const payload = {
         uuid: currentTask.uuid,
         id: currentTask.id,
-        title: currentTask.title,
+        title: titleText,
         response: responseText
       };
 
@@ -132,7 +134,7 @@
         statusEl.style.color = 'red';
         statusEl.style.display = 'inline';
       } else {
-        statusEl.textContent = '❌ Submission failed. Try again.';
+        statusEl.textContent = result.message || '❌ Submission failed. Try again.';
         statusEl.style.color = 'red';
         statusEl.style.display = 'inline';
       }
