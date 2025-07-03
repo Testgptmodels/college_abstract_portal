@@ -133,10 +133,17 @@
         return;
       }
 
-      const modelLine = (parsed.Core_Model || parsed.model || '').toLowerCase();
+      const modelLine = (parsed.Core_Model || parsed.Model || '').toLowerCase();
       const expectedModelKeyword = modelKeywords[model];
       if (!modelLine.includes(expectedModelKeyword)) {
         showToast(`❌ Model name does not match selected model (${expectedModelKeyword}).`, 'danger');
+        return;
+      }
+
+      const expectedTitle = (currentTask.title || '').toLowerCase();
+      const responseTitle = (parsed.Title || '').toLowerCase();
+      if (expectedTitle !== responseTitle) {
+        showToast(`❌ Title mismatch. Expected: "${currentTask.title}"`, 'danger');
         return;
       }
 
