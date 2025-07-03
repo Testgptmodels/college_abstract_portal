@@ -142,14 +142,6 @@
         return;
       }
 
-      const expectedTitle = (currentTask.title || '').toLowerCase();
-      const responseTitle = (parsed.Title || '').toLowerCase();
-
-      if (expectedTitle !== responseTitle) {
-        showToast(`❌ Title mismatch. Expected: "${currentTask.title}"`, 'danger');
-        return;
-      }
-
       const abstract = parsed.Abstract || '';
       const wordCount = abstract.trim().split(/\s+/).length;
       if (wordCount < 50) {
