@@ -125,7 +125,7 @@ def get_next(model):
     for i, entry in enumerate(titles):
         title_id = entry.get('id', i)
         if title_id not in used_ids:
-            prompt = f'Prompt Template: Generate an academic abstract of 150 to 300 words on the topic "{entry["title"]}". Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. Avoid suggestions, conversational language, and introductory framing. The response should contain all the fields {{ "model name": "<model name>", "Core_Model": "<core model name>", "Title": "<title content>", "Abstract": "<abstract content>", "Keywords": "<comma-separated keywords>" }} using valid JSON format.'
+            prompt = f"""Prompt Template: Generate an academic abstract of 150 to 300 words on the topic "{entry["title"]}". Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. Avoid suggestions, conversational language, and introductory framing. The response should contain all the fields {{ "model name": "<model name>", "Core_Model": "<core model name>", "Title": "<title content>", "Abstract": "<abstract content>", "Keywords": "<comma-separated keywords>" }} using valid JSON format."""
             return jsonify({
                 'uuid': str(uuid4()),
                 'id': title_id,
