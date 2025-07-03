@@ -43,13 +43,14 @@
           <button id="copyBtn" class="btn btn-outline-secondary btn-sm">📋 Copy Title</button>
         </div>
 
-        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Paste your abstract here..." readonly></textarea>
+        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Paste your abstract here only..." readonly onpaste="setTimeout(() => this.removeAttribute('readonly'), 10);"></textarea>
 
-         <div class="d-flex align-items-center mb-2">
+        <div class="d-flex align-items-center mb-3">
           <button id="pasteBtn" class="btn btn-outline-secondary btn-sm me-2">📥 Paste</button>
           <button id="clearBtn" class="btn btn-outline-danger btn-sm">🗑 Clear</button>
         </div>
-        <div class="d-flex align-items-center">
+
+        <div class="d-flex align-items-center mb-3">
           <button id="submitBtn" class="btn btn-primary me-3">Submit</button>
           <span id="statusMessage" class="fw-bold"></span>
         </div>
@@ -63,18 +64,24 @@
   <script>
     let currentTask = null;
     let lastPaste = "";
+    let modelKeywords = {
+      "gemini_flash": "gemini",
+      "grok": "grok",
+      "chatgpt_4o_mini": "gpt",
+      "claude": "claude",
+      "copilot": "copilot"
+    };
 
     async function loadTask() {
       const model = document.getElementById('modelSelect').value;
       const res = await fetch(`/get_next/${model}`);
       const data = await res.json();
-
       if (!data.title) {
         document.getElementById('task-title').innerText = '✅ All abstracts completed!';
         document.getElementById('submitBtn').disabled = true;
       } else {
         currentTask = data;
-        document.getElementById('task-title').innerText = data.title;
+        document.getElementById('task-title').innerText = data.original_title || data.title;
         document.getElementById('response').value = '';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('statusMessage').style.display = 'none';
@@ -94,7 +101,7 @@
       try {
         const text = await navigator.clipboard.readText();
         if (text.trim() === lastPaste.trim()) {
-          showToast('❌ Same content already pasted. Press clear ', 'danger');
+          showToast('❌ Same content already pasted. Press clear.', 'danger');
           return;
         }
         document.getElementById('response').value = text.trim();
@@ -108,7 +115,7 @@
     document.getElementById('clearBtn').addEventListener('click', () => {
       document.getElementById('response').value = '';
       lastPaste = '';
-      showToast('🗑 Cleared successfully.' , 'info');
+      showToast('🗑 Cleared successfully.', 'info');
     });
 
     document.getElementById('submitBtn').addEventListener('click', async () => {
@@ -124,6 +131,31 @@
 
       if (wordCount < 50) {
         showToast('❌ Response must be at least 50 words.', 'danger');
+        return;
+      }
+
+      const lines = responseText.split('\n').map(line => line.trim()).filter(Boolean);
+      if (lines.length < 2) {
+        showToast('❌ Response must include model name and title in first two lines.', 'danger');
+        return;
+      }
+
+      const modelNameLine = lines[0].toLowerCase();
+      const titleLine = lines[1].toLowerCase();
+      const expectedModelKeyword = modelKeywords[model];
+      if (!modelNameLine.includes(expectedModelKeyword)) {
+        showToast(`❌ Model name in first line does not match selected model (${expectedModelKeyword}).`, 'danger');
+        return;
+      }
+
+      const actualTitle = (currentTask.original_title || currentTask.title).toLowerCase();
+      if (!titleLine.includes(actualTitle.slice(0, 10))) {
+        showToast('❌ Title in second line does not match the actual task title.', 'danger');
+        return;
+      }
+
+      if (responseText === currentTask.title) {
+        showToast('❌ Response should not be identical to the prompt.', 'danger');
         return;
       }
 
@@ -169,7 +201,6 @@
 
     window.onload = loadTask;
   </script>
-
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
