@@ -125,11 +125,12 @@ def get_next(model):
     for i, entry in enumerate(titles):
         title_id = entry.get('id', i)
         if title_id not in used_ids:
-            prompt = f'Prompt Template: Generate a concise academic abstract of 150 to 300 words on the topic "{entry["title"]}". Do not include the title in the output. Maintain a formal academic tone with a focus on clarity, objectivity, and technical accuracy. Exclude any suggestions, conversational elements, or framing language. Present only the abstract text.'
+            prompt = f'Prompt Template: Generate an academic abstract of 150 to 300 words on the topic "{entry["title"]}". Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. Avoid suggestions, conversational language, and introductory framing. The response should contain all the fields {{ "model name": "<model name>", "Core_Model": "<core model name>", "Title": "<title content>", "Abstract": "<abstract content>", "Keywords": "<comma-separated keywords>" }} using valid JSON format.'
             return jsonify({
                 'uuid': str(uuid4()),
                 'id': title_id,
-                'title': prompt
+                'title': entry['title'],
+                'prompt': prompt
             })
 
     return jsonify({'title': None})
@@ -170,6 +171,10 @@ def submit_response(model):
 
     data = request.json
     response = data['response'].strip()
+    expected_title = data['title'].strip()
+
+    if not response.startswith(expected_title):
+        return jsonify({'status': 'error', 'message': 'First line must match the title exactly.'})
 
     if len(response.split()) < 50:
         return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
@@ -189,7 +194,6 @@ def submit_response(model):
                             'diff': diff_result['diff']
                         })
 
-    title = re.sub(r'^Generate a concise academic abstract of 150 to 300 words on the topic \"', '', data['title']).rstrip('".')
     word_count = len(response.split())
     sentence_count = response.count('.') + response.count('!') + response.count('?')
     char_count = len(response)
@@ -197,7 +201,7 @@ def submit_response(model):
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'title': title,      
+        'title': expected_title,
         'response': response,
         'model': model,
         'username': session['username'],
@@ -211,6 +215,7 @@ def submit_response(model):
         f.write(json.dumps(entry) + '\n')
 
     return jsonify({'status': 'success'})
+
 
 # (Other routes are unchanged, but similar modifications can be made to integrate Copilot and new prompt templates.)
 
