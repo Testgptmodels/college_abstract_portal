@@ -39,14 +39,11 @@
       <div class="card-body">
         <h5 class="card-title">Abstract Task</h5>
         <div class="d-flex align-items-center mb-3">
-          <div id="task-title" class="text-primary flex-grow-1 fw-bold"></div>
+          <div id="task-prompt" class="text-primary flex-grow-1 fw-bold"></div>
           <button id="copyBtn" class="btn btn-outline-secondary btn-sm">📋 Copy Title</button>
         </div>
 
-        <div class="mb-3">
-          <label for="task-prompt" class="form-label fw-semibold">Prompt:</label>
-          <div id="task-prompt" class="bg-light border rounded p-2 small text-muted" style="white-space: pre-wrap;"></div>
-        </div>
+        
 
         <textarea id="response" class="form-control mb-3" rows="10" placeholder="Paste your JSON response here only..." readonly onpaste="setTimeout(() => this.removeAttribute('readonly'), 10);"></textarea>
 
@@ -85,7 +82,6 @@
         document.getElementById('submitBtn').disabled = true;
       } else {
         currentTask = data;
-        document.getElementById('task-title').innerText = data.title;
         document.getElementById('task-prompt').innerText = data.prompt || 'Prompt not available.';
         document.getElementById('response').value = '';
         document.getElementById('submitBtn').disabled = false;
