@@ -37,13 +37,11 @@
 
     <div class="card">
       <div class="card-body">
-        <h5 class="card-title">Abstract Task</h5>
+        <h5 class="card-title">Prompt Template</h5>
         <div class="d-flex align-items-center mb-3">
-          <div id="task-prompt" class="text-primary flex-grow-1 fw-bold"></div>
-          <button id="copyBtn" class="btn btn-outline-secondary btn-sm">📋 Copy Title</button>
+          <div id="task-prompt" class="text-primary flex-grow-1 fw-bold" style="white-space: pre-wrap;"></div>
+          <button id="copyBtn" class="btn btn-outline-secondary btn-sm">📋 Copy Prompt</button>
         </div>
-
-        
 
         <textarea id="response" class="form-control mb-3" rows="10" placeholder="Paste your JSON response here only..." readonly onpaste="setTimeout(() => this.removeAttribute('readonly'), 10);"></textarea>
 
@@ -78,7 +76,7 @@
       const res = await fetch(`/get_next/${model}`);
       const data = await res.json();
       if (!data.title) {
-        document.getElementById('task-title').innerText = '✅ All abstracts completed!';
+        document.getElementById('task-prompt').innerText = '✅ All abstracts completed!';
         document.getElementById('submitBtn').disabled = true;
       } else {
         currentTask = data;
@@ -92,9 +90,9 @@
     document.getElementById('modelSelect').addEventListener('change', loadTask);
 
     document.getElementById('copyBtn').addEventListener('click', () => {
-      const titleText = document.getElementById('task-title').innerText;
-      navigator.clipboard.writeText(titleText).then(() => {
-        showToast('✅ Title copied to clipboard.', 'success');
+      const promptText = document.getElementById('task-prompt').innerText;
+      navigator.clipboard.writeText(promptText).then(() => {
+        showToast('✅ Prompt copied to clipboard.', 'success');
       });
     });
 
