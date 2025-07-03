@@ -121,7 +121,6 @@
     document.getElementById('submitBtn').addEventListener('click', async () => {
       const model = document.getElementById('modelSelect').value;
       const responseText = document.getElementById('response').value.trim();
-      const statusEl = document.getElementById('statusMessage');
       const wordCount = responseText.split(/\s+/).filter(Boolean).length;
 
       if (!responseText) {
@@ -135,27 +134,18 @@
       }
 
       const lines = responseText.split('\n').map(line => line.trim()).filter(Boolean);
-      if (lines.length < 2) {
-        showToast('❌ Response must include model name and title in first two lines.', 'danger');
-        return;
-      }
+      const firstLine = lines[0].replace(/\*\*/g, '').toLowerCase();
+      const expectedKeyword = modelKeywords[model];
+      const expectedTitle = (currentTask.original_title || currentTask.title).toLowerCase();
+      const partialTitle = expectedTitle.slice(0, 10); // partial check
 
-      const modelNameLine = lines[0].toLowerCase();
-      const titleLine = lines[1].toLowerCase();
-      const expectedModelKeyword = modelKeywords[model];
-      if (!modelNameLine.includes(expectedModelKeyword)) {
-        showToast(`❌ Model name in first line does not match selected model (${expectedModelKeyword}).`, 'danger');
-        return;
-      }
-
-      const actualTitle = (currentTask.original_title || currentTask.title).toLowerCase();
-      if (!titleLine.includes(actualTitle.slice(0, 10))) {
-        showToast('❌ Title in second line does not match the actual task title.', 'danger');
+      if (!firstLine.includes(expectedKeyword) || !firstLine.includes(partialTitle)) {
+        showToast('❌ First line must include both model name and part of the title.', 'danger');
         return;
       }
 
       if (responseText === currentTask.title) {
-        showToast('❌ Response should not be identical to the prompt.', 'danger');
+        showToast('❌ Response cannot be identical to the prompt.', 'danger');
         return;
       }
 
