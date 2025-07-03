@@ -43,7 +43,7 @@
           <button id="copyBtn" class="btn btn-outline-secondary btn-sm">📋 Copy Title</button>
         </div>
 
-        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Paste your abstract here only..." readonly onpaste="setTimeout(() => this.removeAttribute('readonly'), 10);"></textarea>
+        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Paste your JSON response here only..." readonly onpaste="setTimeout(() => this.removeAttribute('readonly'), 10);"></textarea>
 
         <div class="d-flex align-items-center mb-3">
           <button id="pasteBtn" class="btn btn-outline-secondary btn-sm me-2">📥 Paste</button>
@@ -58,7 +58,6 @@
     </div>
   </div>
 
-  <!-- Toast placeholder -->
   <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3"></div>
 
   <script>
@@ -81,7 +80,7 @@
         document.getElementById('submitBtn').disabled = true;
       } else {
         currentTask = data;
-        document.getElementById('task-title').innerText = data.original_title || data.title;
+        document.getElementById('task-title').innerText = data.title;
         document.getElementById('response').value = '';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('statusMessage').style.display = 'none';
@@ -121,41 +120,37 @@
     document.getElementById('submitBtn').addEventListener('click', async () => {
       const model = document.getElementById('modelSelect').value;
       const responseText = document.getElementById('response').value.trim();
-      const wordCount = responseText.split(/\s+/).filter(Boolean).length;
-
       if (!responseText) {
         showToast('❌ Please enter a response.', 'danger');
         return;
       }
 
+      let parsed;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch (e) {
+        showToast('❌ Invalid JSON format.', 'danger');
+        return;
+      }
+
+      const modelLine = (parsed.Core_Model || parsed.model || '').toLowerCase();
+      const expectedModelKeyword = modelKeywords[model];
+      if (!modelLine.includes(expectedModelKeyword)) {
+        showToast(`❌ Model name does not match selected model (${expectedModelKeyword}).`, 'danger');
+        return;
+      }
+
+      const abstract = parsed.Abstract || '';
+      const wordCount = abstract.trim().split(/\s+/).length;
       if (wordCount < 50) {
-        showToast('❌ Response must be at least 50 words.', 'danger');
-        return;
-      }
-
-      const lines = responseText.split('\n').map(line => line.trim()).filter(Boolean);
-      if (lines.length < 1) {
-        showToast('❌ Response must contain a model name in the first line.', 'danger');
-        return;
-      }
-
-      const firstLine = lines[0].replace(/\*\*/g, '').toLowerCase(); // strip bold markdown
-      const expectedKeyword = modelKeywords[model];
-
-      if (!firstLine.includes(expectedKeyword)) {
-        showToast(`❌ First line must contain model name: ${expectedKeyword}`, 'danger');
-        return;
-      }
-
-      if (responseText === currentTask.title) {
-        showToast('❌ Response cannot be identical to the prompt.', 'danger');
+        showToast('❌ Abstract must be at least 50 words.', 'danger');
         return;
       }
 
       const payload = {
         uuid: currentTask.uuid,
         id: currentTask.id,
-        title: currentTask.title,
+        title: parsed.Title,
         response: responseText
       };
 
@@ -166,7 +161,6 @@
       });
 
       const result = await res.json();
-
       if (result.status === 'success') {
         showToast('✅ Response submitted successfully.', 'success');
         loadTask();
