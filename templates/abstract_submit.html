@@ -134,13 +134,16 @@
       }
 
       const lines = responseText.split('\n').map(line => line.trim()).filter(Boolean);
-      const firstLine = lines[0].replace(/\*\*/g, '').toLowerCase();
-      const expectedKeyword = modelKeywords[model];
-      const expectedTitle = (currentTask.original_title || currentTask.title).toLowerCase();
-      const partialTitle = expectedTitle.slice(0, 10); // partial check
+      if (lines.length < 1) {
+        showToast('❌ Response must contain a model name in the first line.', 'danger');
+        return;
+      }
 
-      if (!firstLine.includes(expectedKeyword) || !firstLine.includes(partialTitle)) {
-        showToast('❌ First line must include both model name and part of the title.', 'danger');
+      const firstLine = lines[0].replace(/\*\*/g, '').toLowerCase(); // strip bold markdown
+      const expectedKeyword = modelKeywords[model];
+
+      if (!firstLine.includes(expectedKeyword)) {
+        showToast(`❌ First line must contain model name: ${expectedKeyword}`, 'danger');
         return;
       }
 
