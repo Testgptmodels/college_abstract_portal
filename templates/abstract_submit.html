@@ -133,10 +133,20 @@
         return;
       }
 
-      const modelLine = (parsed.Model || '').toLowerCase();
+      const modelFieldRaw = parsed.Model || parsed["model name"] || parsed.model_name || parsed.Core_Model || '';
+      const modelLine = modelFieldRaw.toLowerCase();
       const expectedModelKeyword = modelKeywords[model];
+
       if (!modelLine.includes(expectedModelKeyword)) {
         showToast(`❌ Model name does not match selected model (${expectedModelKeyword}).`, 'danger');
+        return;
+      }
+
+      const expectedTitle = (currentTask.title || '').toLowerCase();
+      const responseTitle = (parsed.Title || '').toLowerCase();
+
+      if (expectedTitle !== responseTitle) {
+        showToast(`❌ Title mismatch. Expected: "${currentTask.title}"`, 'danger');
         return;
       }
 
