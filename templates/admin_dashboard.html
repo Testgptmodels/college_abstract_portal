@@ -59,7 +59,7 @@
               <th>Grok</th>
               <th>ChatGPT 4o Mini</th>
               <th>Claude</th>
-              <th>Microsoft Copilot</th> <!-- ✅ Add this line -->
+              <th>Microsoft Copilot</th>
               <th>Total</th>
               <th>Receipt</th>
             </tr>
@@ -69,11 +69,11 @@
             <tr>
               <td>{{ loop.index }}</td>
               <td>{{ contributor.username }}</td>
-              <td>{{ contributor.gemini_flash }}</td>
-              <td>{{ contributor.grok }}</td>
-              <td>{{ contributor.chatgpt_4o_mini }}</td>
-              <td>{{ contributor.claude }}</td>
-              <td>{{ contributor.copilot }}</td> <!-- ✅ Add this -->
+              <td>{{ contributor.gemini_flash or 0 }}</td>
+              <td>{{ contributor.grok or 0 }}</td>
+              <td>{{ contributor.chatgpt_4o_mini or 0 }}</td>
+              <td>{{ contributor.claude or 0 }}</td>
+              <td>{{ contributor.copilot or 0 }}</td>
               <td><strong>{{ contributor.total }}</strong></td>
               <td>
                 <a href="{{ url_for('receipt', username=contributor.username) }}" class="btn btn-sm btn-primary">Receipt</a>
@@ -100,7 +100,6 @@
 </div>
 
 <!-- Chart Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
   const totalAnswersChart = document.getElementById('totalAnswersChart');
   new Chart(totalAnswersChart, {
