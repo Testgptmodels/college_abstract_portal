@@ -99,13 +99,14 @@ def submit():
 def get_next(model):
     completed_ids = set()
     output_file = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
+    
     if os.path.exists(output_file):
         with open(output_file, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
                     data = json.loads(line)
                     completed_ids.add(data['id'])
-                except:
+                except Exception:
                     continue
 
     with open(INPUT_FILE, 'r', encoding='utf-8') as f:
@@ -119,11 +120,10 @@ def get_next(model):
                     f'/{{model name :"<model name>"  Core_Model: "<core model name>" Title: "<title content>" '
                     f'Abstract: "<abstract content>" Keywords: "<comma-separated keywords>"}} use valid json format.'
                 )
-                
                 return jsonify({
                     'uuid': str(uuid4()),
                     'id': entry['id'],
-                    'title': entry['title'],
+                    'title': prompt,
                     'prompt': prompt
                 })
 
@@ -192,6 +192,9 @@ def submit_response(model):
     }
 
     with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry) + '\n')
+    
+    with open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), 'a', encoding='utf-8') as f:
         f.write(json.dumps(entry) + '\n')
 
     return jsonify({'status': 'success'})
