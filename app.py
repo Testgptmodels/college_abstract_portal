@@ -1,13 +1,9 @@
-# app.py
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_sqlalchemy import SQLAlchemy
 from uuid import uuid4
-from datetime import datetime, timedelta
-import jsonlines, os, json, re
-from collections import defaultdict, Counter
-from flask import send_from_directory
-import difflib
+from datetime import datetime
+import os, json, difflib
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -15,9 +11,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite3'
 db = SQLAlchemy(app)
 
 USERS_FILE = 'users.json'
-RESPONSES_DIR = 'responses'
 INPUT_FILE = 'backend/inputs/input.jsonl'
+RESPONSES_DIR = 'responses'
+OUTPUT_DIR = 'backend/outputs'
 MODELS = ["gemini_flash", "grok", "chatgpt_4o_mini", "claude", "copilot"]
+
+# Ensure directories and files exist
+os.makedirs(RESPONSES_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 if not os.path.exists(USERS_FILE):
     with open(USERS_FILE, 'w') as f:
@@ -35,11 +36,9 @@ with open(USERS_FILE, 'r+') as f:
         json.dump(users, f, indent=2)
         f.truncate()
 
-if not os.path.exists(RESPONSES_DIR):
-    os.makedirs(RESPONSES_DIR)
-    for model in MODELS:
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'w') as f:
-            pass
+for model in MODELS:
+    open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a').close()
+    open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), 'a').close()
 
 @app.route('/')
 def home():
@@ -63,7 +62,6 @@ def register():
             if username in users:
                 flash("Username already exists")
                 return redirect(url_for('register'))
-
             users[username] = {
                 'password': generate_password_hash(password),
                 'email': email,
@@ -86,9 +84,7 @@ def login():
         users = json.load(f)
     if username in users and check_password_hash(users[username]['password'], password):
         session['username'] = username
-        if username == 'admin':
-            return redirect(url_for('admin_dashboard'))
-        return redirect(url_for('submit'))
+        return redirect(url_for('admin_dashboard') if username == 'admin' else url_for('submit'))
     flash("Invalid credentials")
     return redirect(url_for('home'))
 
@@ -105,270 +101,100 @@ def submit():
 
 @app.route('/get_next/<model>')
 def get_next(model):
-    if not os.path.exists(INPUT_FILE):
-        return jsonify({'title': None})
+    completed_ids = set()
+    output_file = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
 
-    with open(INPUT_FILE) as f:
-        titles = [json.loads(line.strip()) for line in f if line.strip()]
-
-    used_ids = set()
-    response_file = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
-    if os.path.exists(response_file):
-        with open(response_file, 'r', encoding='utf-8') as f:
+    if os.path.exists(output_file):
+        with open(output_file, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
-                    data = json.loads(line.strip())
-                    used_ids.add(data.get('id'))
+                    data = json.loads(line)
+                    completed_ids.add(data['id'])
                 except:
                     continue
 
-    for i, entry in enumerate(titles):
-        title_id = entry.get('id', i)
-        if title_id not in used_ids:
-            prompt = f'Prompt Template: Generate a concise academic abstract of 150 to 300 words on the topic "{entry["title"]}". Do include the title in the output. Maintain a formal academic tone with a focus on clarity, objectivity, and technical accuracy. Exclude any suggestions, conversational elements, or framing language. tart the abstract by printing the abstract title in first line then Present only the abstract text'
-            return jsonify({
-                'uuid': str(uuid4()),
-                'id': title_id,
-                'title': entry['title'],
-                'prompt': prompt
-            })
+    with open(INPUT_FILE, 'r', encoding='utf-8') as f:
+        for line in f:
+            entry = json.loads(line)
+            if entry['id'] not in completed_ids:
+                prompt = (
+                    f'Prompt Template: Generate an academic abstract of 150 to 300 words on the topic "{entry["title"]}". '
+                    f'Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. '
+                    f'Response must follow this JSON format:\n'
+                    f'{{"model name": "<model>", "Core_Model": "<core model>", "Title": "{entry["title"]}", '
+                    f'"Abstract": "<your abstract>", "Keywords": "<comma-separated>"}}'
+                )
+                return jsonify({
+                    'uuid': str(uuid4()),
+                    'id': entry['id'],
+                    'title': entry['title'],
+                    'prompt': prompt
+                })
 
-    return jsonify({'title': None})
+    return jsonify({'prompt': None})
 
-def show_diff(base, edited, similarity_threshold=0.85):
-    base_words = base.split()
-    edited_words = edited.split()
-    diff = difflib.ndiff(base_words, edited_words)
-
-    added, removed, unchanged = [], [], []
-    for line in diff:
-        if line.startswith('+ '): added.append(line[2:])
-        elif line.startswith('- '): removed.append(line[2:])
-        elif line.startswith('  '): unchanged.append(line[2:])
-
-    ratio = difflib.SequenceMatcher(None, base, edited).ratio()
-
-    if ratio > similarity_threshold:
-        return {
-            "status": "duplicate",
-            "message": "Duplicate or similar response.",
-            "diff": {
-                "added": added,
-                "removed": removed,
-                "unchanged": unchanged[:10]
-            }
-        }
-    else:
-        return {
-            "status": "unique",
-            "message": "Answer is unique."
-        }
+def show_diff(base, edited, threshold=0.85):
+    if difflib.SequenceMatcher(None, base, edited).ratio() > threshold:
+        return True
+    return False
 
 @app.route('/submit/<model>', methods=['POST'])
 def submit_response(model):
     if 'username' not in session:
         return jsonify({'status': 'error', 'message': 'Not logged in'})
 
-    data = request.json
-    response = data['response'].strip()
-    expected_title = data['title'].strip()
+    try:
+        data = request.json
+        response = data['response'].strip()
+        if len(response.split()) < 50:
+            return jsonify({'status': 'error', 'message': 'Response too short'})
 
-    if not response.startswith(expected_title):
-        return jsonify({'status': 'error', 'message': 'First line must match the title exactly.'})
+        for m in MODELS:
+            filepath = os.path.join(RESPONSES_DIR, f"{m}.jsonl")
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        old = json.loads(line)
+                        if show_diff(old.get('response', ''), response):
+                            return jsonify({'status': 'duplicate', 'message': 'Duplicate response found'})
 
-    if len(response.split()) < 50:
-        return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
+        entry = {
+            'uuid': data['uuid'],
+            'id': data['id'],
+            'title': data['title'],
+            'response': response,
+            'model': model,
+            'username': session['username'],
+            'word_count': len(response.split()),
+            'sentence_count': response.count('.') + response.count('!') + response.count('?'),
+            'character_count': len(response),
+            'timestamp': datetime.utcnow().isoformat()
+        }
 
-    for m in MODELS:
-        path = os.path.join(RESPONSES_DIR, f"{m}.jsonl")
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    entry = json.loads(line)
-                    base = entry.get('response', '')
-                    diff_result = show_diff(base, response)
-                    if diff_result['status'] == 'duplicate':
-                        return jsonify({
-                            'status': 'duplicate',
-                            'message': diff_result['message'],
-                            'diff': diff_result['diff']
-                        })
+        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry) + '\n')
 
-    word_count = len(response.split())
-    sentence_count = response.count('.') + response.count('!') + response.count('?')
-    char_count = len(response)
+        return jsonify({'status': 'success'})
 
-    entry = {
-        'uuid': data['uuid'],
-        'id': data['id'],
-        'title': expected_title,
-        'response': response,
-        'model': model,
-        'username': session['username'],
-        'word_count': word_count,
-        'sentence_count': sentence_count,
-        'character_count': char_count,
-        'timestamp': datetime.utcnow().isoformat()
-    }
-
-    with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a', encoding='utf-8') as f:
-        f.write(json.dumps(entry) + '\n')
-
-    return jsonify({'status': 'success'})
-
-
-# (Other routes are unchanged, but similar modifications can be made to integrate Copilot and new prompt templates.)
-
-
-@app.route('/user_dashboard')
-def user_dashboard():
-    if 'username' not in session:
-        return redirect(url_for('home'))
-    model_counts = []
-    for model in MODELS:
-        count = 0
-        path = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
-        with open(path) as f:
-            for line in f:
-                if json.loads(line).get("username") == session['username']:
-                    count += 1
-        model_counts.append({"name": model.replace('_', ' ').title(), "count": count})
-    return render_template("user_dashboard.html", model_counts=model_counts, username=session['username'])
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/admin')
 def admin_dashboard():
     if 'username' not in session or session['username'] != 'admin':
         return redirect(url_for('home'))
+    return render_template('admin_dashboard.html')
 
-    total_answers = {"labels": [], "counts": []}
-    for model in MODELS:
-        total_answers["labels"].append(model.replace("_", " ").title())
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl")) as f:
-            total_answers["counts"].append(sum(1 for _ in f))
-
-    user_model_activity = {"models": [m.replace('_', ' ').title() for m in MODELS], "users": []}
-    user_counts = defaultdict(lambda: [0]*len(MODELS))
-    color_cycle = ['#FF5733', '#33CFFF', '#7D3C98', '#2ECC71', '#FF33A1']
-
-    for idx, model in enumerate(MODELS):
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl")) as f:
-            for line in f:
-                obj = json.loads(line)
-                user = obj["username"]
-                user_counts[user][idx] += 1
-
-    for i, (user, counts) in enumerate(user_counts.items()):
-        user_model_activity["users"].append({
-            "username": user,
-            "counts": counts,
-            "color": color_cycle[i % len(color_cycle)]
-        })
-
-    today = datetime.utcnow().date()
-    daily_user_activity = {"dates": [], "users": []}
-    user_daily = defaultdict(lambda: [0]*30)
-    for idx, model in enumerate(MODELS):
-        with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl")) as f:
-            for line in f:
-                data = json.loads(line)
-                date = datetime.fromisoformat(data['timestamp']).date()
-                if (today - date).days < 30:
-                    user_daily[data['username']][29 - (today - date).days] += 1
-    for i, (user, counts) in enumerate(user_daily.items()):
-        daily_user_activity["users"].append({
-            "username": user,
-            "counts": counts,
-            "color": color_cycle[i % len(color_cycle)]
-        })
-    daily_user_activity['dates'] = [(today - timedelta(days=i)).isoformat() for i in reversed(range(30))]
-
-    contributor_data = []
-    for user, counts in user_counts.items():
-        total = sum(counts)
-        contributor_data.append({
-            'username': user,
-            'gemini_flash': counts[0],
-            'grok': counts[1],
-            'chatgpt_4o_mini': counts[2],
-            'claude': counts[3],
-            'copilot': counts[4],
-            'total': total
-        })
-    contributor_data = sorted(contributor_data, key=lambda x: x['total'], reverse=True)
-
-    return render_template("admin_dashboard.html", total_answers=total_answers, user_model_activity=user_model_activity,
-                           daily_user_activity=daily_user_activity, top_contributors=contributor_data)
+@app.route('/user_dashboard')
+def user_dashboard():
+    if 'username' not in session:
+        return redirect(url_for('home'))
+    return render_template('user_dashboard.html', username=session['username'])
 
 @app.route('/download/<model>')
 def download_model(model):
+    path = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
     return send_from_directory(RESPONSES_DIR, f"{model}.jsonl", as_attachment=True)
 
-
-@app.route('/receipt/<username>')
-def receipt(username):
-    # Static admin details
-    admin_info = {
-        "name": "Ambrish G",
-        "email": "testgptmodels@gmail.com",
-        "phone": "0000000000"
-    }
-
-    # Load user info from users.json
-    with open(USERS_FILE) as f:
-        users = json.load(f)
-    user_info = users.get(username)
-    if not user_info:
-        flash(f"No such user: {username}")
-        return redirect(url_for('admin_dashboard'))
-
-    # Count abstracts per model
-    counts = []
-    items = []
-    price_per_abstract = 0.1  # You can change this to any value
-    for model in MODELS:
-        count = 0
-        path = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
-        if os.path.exists(path):
-            with open(path) as f:
-                for line in f:
-                    if json.loads(line).get("username") == username:
-                        count += 1
-        if count > 0:
-            items.append({
-                "description": f"{model.replace('_', ' ').title()} abstracts",
-                "quantity": count,
-                "price": price_per_abstract,
-                "amount": count * price_per_abstract
-            })
-        counts.append(count)
-
-    total = sum(item["amount"] for item in items)
-
-    context = dict(
-        receipt_number=f"RCPT-{uuid4().hex[:8].upper()}",
-        receipt_date=datetime.utcnow().strftime("%Y-%m-%d"),
-        from_name=admin_info["name"],
-        from_email=admin_info["email"],
-        from_phone=admin_info["phone"],
-        to_name=username,
-        to_email=user_info.get("email", ""),
-        to_phone=user_info.get("phone", ""),
-        items=items,
-        amount=total,
-        additional_charges=0,
-        total=total
-    )
-
-    return render_template("receipt.html", **context)
-
-
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
-
-
-
-
-
-
-
+    app.run(debug=True)
