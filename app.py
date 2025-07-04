@@ -105,35 +105,35 @@ def submit():
 
 @app.route('/get_next/<model>')
 def get_next(model):
-    completed_ids = set()
-    output_file = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
-    if os.path.exists(output_file):
-        with open(output_file, 'r', encoding='utf-8') as f:
+    if not os.path.exists(INPUT_FILE):
+        return jsonify({'title': None})
+
+    with open(INPUT_FILE) as f:
+        titles = [json.loads(line.strip()) for line in f if line.strip()]
+
+    used_ids = set()
+    response_file = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
+    if os.path.exists(response_file):
+        with open(response_file, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
-                    data = json.loads(line)
-                    completed_ids.add(data['id'])
+                    data = json.loads(line.strip())
+                    used_ids.add(data.get('id'))
                 except:
                     continue
 
-    with open(INPUT_FILE, 'r', encoding='utf-8') as f:
-        for line in f:
-            entry = json.loads(line)
-            if entry['id'] not in completed_ids:
-                prompt = (
-                    f'Prompt Template: Generate a academic abstract of 150 to 300 words on the topic "{entry["title"]}". '
-                    f'Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. '
-                    f'Avoid suggestions, conversational language, and introductory framing. The response should contain all the field '
-                    f'/{{model name :"<model name>"  Core_Model: "<core model name>" Title: "{entry["title"]}" '
-                    f'Abstract: "<abstract content>" Keywords: "<comma-separated keywords>"}} use valid json format.'
-                )
-                return jsonify({
-                    'uuid': str(uuid4()),
-                    'id': entry['id'],
-                    'prompt': prompt
-                })
+    for i, entry in enumerate(titles):
+        title_id = entry.get('id', i)
+        if title_id not in used_ids:
+            prompt = f'Prompt Template: Generate a concise academic abstract of 150 to 300 words on the topic "{entry["title"]}". Do include the title in the output. Maintain a formal academic tone with a focus on clarity, objectivity, and technical accuracy. Exclude any suggestions, conversational elements, or framing language. tart the abstract by printing the abstract title in first line then Present only the abstract text'
+            return jsonify({
+                'uuid': str(uuid4()),
+                'id': title_id,
+                'title': entry['title'],
+                'prompt': prompt
+            })
 
-    return jsonify({'prompt': None})
+    return jsonify({'title': None})
 
 def show_diff(base, edited, similarity_threshold=0.85):
     base_words = base.split()
@@ -171,10 +171,10 @@ def submit_response(model):
 
     data = request.json
     response = data['response'].strip()
-    prompt = data['prompt'].strip()
+    expected_title = data['title'].strip()
 
-    if not response.startswith(prompt.splitlines()[0]):
-        return jsonify({'status': 'error', 'message': 'First line must match the prompt title.'})
+    if not response.startswith(expected_title):
+        return jsonify({'status': 'error', 'message': 'First line must match the title exactly.'})
 
     if len(response.split()) < 50:
         return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
@@ -185,22 +185,29 @@ def submit_response(model):
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     entry = json.loads(line)
-                    if 'response' in entry:
-                        base = entry['response']
-                        ratio = difflib.SequenceMatcher(None, base, response).ratio()
-                        if ratio > 0.85:
-                            return jsonify({'status': 'duplicate', 'message': 'Duplicate or similar response detected.'})
+                    base = entry.get('response', '')
+                    diff_result = show_diff(base, response)
+                    if diff_result['status'] == 'duplicate':
+                        return jsonify({
+                            'status': 'duplicate',
+                            'message': diff_result['message'],
+                            'diff': diff_result['diff']
+                        })
+
+    word_count = len(response.split())
+    sentence_count = response.count('.') + response.count('!') + response.count('?')
+    char_count = len(response)
 
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'prompt': prompt,
+        'title': expected_title,
         'response': response,
         'model': model,
         'username': session['username'],
-        'word_count': len(response.split()),
-        'sentence_count': response.count('.') + response.count('!') + response.count('?'),
-        'character_count': len(response),
+        'word_count': word_count,
+        'sentence_count': sentence_count,
+        'character_count': char_count,
         'timestamp': datetime.utcnow().isoformat()
     }
 
@@ -209,7 +216,7 @@ def submit_response(model):
 
     return jsonify({'status': 'success'})
 
-# Note: You can now add the rest of your unchanged routes like admin_dashboard, user_dashboard, receipt, etc.
+
 # (Other routes are unchanged, but similar modifications can be made to integrate Copilot and new prompt templates.)
 
 
@@ -354,6 +361,14 @@ def receipt(username):
 
     return render_template("receipt.html", **context)
 
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
+
+
+
+
+
+
+
