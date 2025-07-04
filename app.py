@@ -118,8 +118,8 @@ def get_next(model):
                 prompt = (
                     f'Prompt Template: Generate a academic abstract of 150 to 300 words on the topic "{entry["title"]}". '
                     f'Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. '
-                    f'Avoid suggestions, conversational language, and introductory framing. The response should contain all the field '
-                    f'/{{model name :"<GPT model name>"  Core_Model: "<core GPT model name>" Title: "<title content>" '
+                    f'Avoid suggestions, conversational language, and introductory framing. The response should contain all the below mention '
+                    f'/{{model name :"<GPT model name - the name of the AI model generating the response>"  Core_Model: "<core GPT model name -  name of the core language model used >" Title: "<title content>" '
                     f'Abstract: "<abstract content>" Keywords: "<comma-separated keywords>"}} use valid json format.'
                 )
                 return jsonify({
