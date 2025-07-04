@@ -204,88 +204,91 @@ def admin_dashboard():
     if 'username' not in session or session['username'] != 'admin':
         return redirect(url_for('login'))
 
-    # Prepare total_answers per model
+    import os
+    import json
+    import random
+    from collections import defaultdict
+
+    # Setup
     total_answers = {"labels": [], "counts": []}
     user_model_activity = {"models": [], "users": []}
-    daily_user_activity = {"dates": [], "users": []}
-    top_contributors_dict = {}
-
-    # Load user list and init model count
+    daily_user_raw = defaultdict(lambda: defaultdict(int))  # date -> user -> count
+    top_contributors = []
     usernames = set()
+
     model_names = [m.replace("_", " ").title() for m in MODELS]
     model_map = dict(zip(MODELS, model_names))
     total_counts = {m: 0 for m in MODELS}
-    user_model_map = {}
+    user_model_map = defaultdict(lambda: defaultdict(int))  # username -> model -> count
 
+    # Read data from .jsonl files
     for model in MODELS:
         path = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
         if not os.path.exists(path):
             continue
         with open(path, 'r', encoding='utf-8') as f:
             for line in f:
-                data = json.loads(line)
-                username = data.get("username")
-                date_str = data.get("generated_at", "").split("T")[0]
-                if not username:
-                    continue
-                usernames.add(username)
-                total_counts[model] += 1
+                try:
+                    data = json.loads(line)
+                    username = data.get("username")
+                    date_str = data.get("generated_at", "").split("T")[0]
+                    if not username:
+                        continue
+                    usernames.add(username)
+                    total_counts[model] += 1
+                    user_model_map[username][model] += 1
+                    daily_user_raw[date_str][username] += 1
+                except Exception as e:
+                    print(f"Error reading line: {e}")
 
-                # Track per-user model usage
-                user_model_map.setdefault(username, {}).setdefault(model, 0)
-                user_model_map[username][model] += 1
-
-                # Track per-user daily usage
-                daily_user_activity.setdefault(date_str, {})
-                daily_user_activity[date_str].setdefault(username, 0)
-                daily_user_activity[date_str][username] += 1
-
-    # Prepare chart data
+    # Chart 1: Total answers per model
     total_answers["labels"] = [model_map[m] for m in MODELS]
     total_answers["counts"] = [total_counts[m] for m in MODELS]
 
-    # User model activity chart
-    import random
+    # Chart 2: User activity per model
     def get_color():
         return f"#{random.randint(0, 0xFFFFFF):06x}"
 
-    for user in usernames:
-        user_entry = {"username": user, "counts": [], "color": get_color()}
-        for m in MODELS:
-            user_entry["counts"].append(user_model_map.get(user, {}).get(m, 0))
-        user_model_activity["users"].append(user_entry)
+    for user in sorted(usernames):
+        entry = {
+            "username": user,
+            "counts": [user_model_map[user].get(m, 0) for m in MODELS],
+            "color": get_color()
+        }
+        user_model_activity["users"].append(entry)
     user_model_activity["models"] = [model_map[m] for m in MODELS]
 
-    # Daily user activity chart
-    all_dates = sorted(daily_user_activity.keys())
-    daily_user_activity_chart = {"dates": all_dates, "users": []}
-    for user in usernames:
-        daily_counts = []
-        for d in all_dates:
-            daily_counts.append(daily_user_activity[d].get(user, 0))
+    # Chart 3: Daily user activity
+    sorted_dates = sorted(daily_user_raw.keys())
+    daily_user_activity_chart = {"dates": sorted_dates, "users": []}
+
+    for user in sorted(usernames):
+        counts = [daily_user_raw[date].get(user, 0) for date in sorted_dates]
         daily_user_activity_chart["users"].append({
             "username": user,
-            "counts": daily_counts,
+            "counts": counts,
             "color": get_color()
         })
 
-    # Top Contributors Table
-    top_contributors = []
-    for user in usernames:
+    # Table: Top contributors
+    for user in sorted(usernames):
         entry = {"username": user, "total": 0}
         for model in MODELS:
-            count = user_model_map.get(user, {}).get(model, 0)
+            count = user_model_map[user][model]
             entry[model] = count
             entry["total"] += count
         top_contributors.append(entry)
+
     top_contributors.sort(key=lambda x: x["total"], reverse=True)
 
+    # Render template
     return render_template("admin_dashboard.html",
         total_answers=total_answers,
         user_model_activity=user_model_activity,
         daily_user_activity=daily_user_activity_chart,
         top_contributors=top_contributors
     )
+
 
 
 @app.route('/user_dashboard')
