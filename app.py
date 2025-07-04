@@ -199,11 +199,94 @@ def submit_response(model):
 
     return jsonify({'status': 'success'})
 
-@app.route('/admin')
+@app.route('/admin_dashboard')
 def admin_dashboard():
     if 'username' not in session or session['username'] != 'admin':
-        return redirect(url_for('home'))
-    return render_template('admin_dashboard.html')
+        return redirect(url_for('login'))
+
+    # Prepare total_answers per model
+    total_answers = {"labels": [], "counts": []}
+    user_model_activity = {"models": [], "users": []}
+    daily_user_activity = {"dates": [], "users": []}
+    top_contributors_dict = {}
+
+    # Load user list and init model count
+    usernames = set()
+    model_names = [m.replace("_", " ").title() for m in MODELS]
+    model_map = dict(zip(MODELS, model_names))
+    total_counts = {m: 0 for m in MODELS}
+    user_model_map = {}
+
+    for model in MODELS:
+        path = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
+        if not os.path.exists(path):
+            continue
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                data = json.loads(line)
+                username = data.get("username")
+                date_str = data.get("generated_at", "").split("T")[0]
+                if not username:
+                    continue
+                usernames.add(username)
+                total_counts[model] += 1
+
+                # Track per-user model usage
+                user_model_map.setdefault(username, {}).setdefault(model, 0)
+                user_model_map[username][model] += 1
+
+                # Track per-user daily usage
+                daily_user_activity.setdefault(date_str, {})
+                daily_user_activity[date_str].setdefault(username, 0)
+                daily_user_activity[date_str][username] += 1
+
+    # Prepare chart data
+    total_answers["labels"] = [model_map[m] for m in MODELS]
+    total_answers["counts"] = [total_counts[m] for m in MODELS]
+
+    # User model activity chart
+    import random
+    def get_color():
+        return f"#{random.randint(0, 0xFFFFFF):06x}"
+
+    for user in usernames:
+        user_entry = {"username": user, "counts": [], "color": get_color()}
+        for m in MODELS:
+            user_entry["counts"].append(user_model_map.get(user, {}).get(m, 0))
+        user_model_activity["users"].append(user_entry)
+    user_model_activity["models"] = [model_map[m] for m in MODELS]
+
+    # Daily user activity chart
+    all_dates = sorted(daily_user_activity.keys())
+    daily_user_activity_chart = {"dates": all_dates, "users": []}
+    for user in usernames:
+        daily_counts = []
+        for d in all_dates:
+            daily_counts.append(daily_user_activity[d].get(user, 0))
+        daily_user_activity_chart["users"].append({
+            "username": user,
+            "counts": daily_counts,
+            "color": get_color()
+        })
+
+    # Top Contributors Table
+    top_contributors = []
+    for user in usernames:
+        entry = {"username": user, "total": 0}
+        for model in MODELS:
+            count = user_model_map.get(user, {}).get(model, 0)
+            entry[model] = count
+            entry["total"] += count
+        top_contributors.append(entry)
+    top_contributors.sort(key=lambda x: x["total"], reverse=True)
+
+    return render_template("admin_dashboard.html",
+        total_answers=total_answers,
+        user_model_activity=user_model_activity,
+        daily_user_activity=daily_user_activity_chart,
+        top_contributors=top_contributors
+    )
+
 
 @app.route('/user_dashboard')
 def user_dashboard():
@@ -236,7 +319,15 @@ def user_dashboard():
 
 @app.route('/download/<model>')
 def download_model(model):
-    return send_from_directory(RESPONSES_DIR, f"{model}.jsonl", as_attachment=True)
+    filename = f'output_{model}.jsonl'
+    output_dir = os.path.join('backend', 'outputs')
+    filepath = os.path.join(output_dir, filename)
+    if os.path.exists(filepath):
+        return send_from_directory(output_dir, filename, as_attachment=True)
+    else:
+        flash(f"No output found for model: {model}", "warning")
+        return redirect(url_for('admin_dashboard'))
+
 
 
 if __name__ == "__main__":
