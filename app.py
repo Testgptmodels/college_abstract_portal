@@ -106,7 +106,7 @@ def submit():
 @app.route('/get_next/<model>')
 def get_next(model):
     completed_ids = set()
-    output_file = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
+    output_file = os.path.join(RESPONSES_DIR, f"{model}.jsonl")
     if os.path.exists(output_file):
         with open(output_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -124,13 +124,12 @@ def get_next(model):
                     f'Prompt Template: Generate a academic abstract of 150 to 300 words on the topic "{entry["title"]}". '
                     f'Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. '
                     f'Avoid suggestions, conversational language, and introductory framing. The response should contain all the field '
-                    f'/{{model name :"<model name>"  Core_Model: "<core model name>" Title: "<title content>" '
+                    f'/{{model name :"<model name>"  Core_Model: "<core model name>" Title: "{entry["title"]}" '
                     f'Abstract: "<abstract content>" Keywords: "<comma-separated keywords>"}} use valid json format.'
                 )
                 return jsonify({
-                    'uuid': str(uuid.uuid4()),
+                    'uuid': str(uuid4()),
                     'id': entry['id'],
-                    'title': entry['title'],
                     'prompt': prompt
                 })
 
@@ -172,10 +171,10 @@ def submit_response(model):
 
     data = request.json
     response = data['response'].strip()
-    expected_title = data['title'].strip()
+    prompt = data['prompt'].strip()
 
-    if not response.startswith(expected_title):
-        return jsonify({'status': 'error', 'message': 'First line must match the title exactly.'})
+    if not response.startswith(prompt.splitlines()[0]):
+        return jsonify({'status': 'error', 'message': 'First line must match the prompt title.'})
 
     if len(response.split()) < 50:
         return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
@@ -186,29 +185,22 @@ def submit_response(model):
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     entry = json.loads(line)
-                    base = entry.get('response', '')
-                    diff_result = show_diff(base, response)
-                    if diff_result['status'] == 'duplicate':
-                        return jsonify({
-                            'status': 'duplicate',
-                            'message': diff_result['message'],
-                            'diff': diff_result['diff']
-                        })
-
-    word_count = len(response.split())
-    sentence_count = response.count('.') + response.count('!') + response.count('?')
-    char_count = len(response)
+                    if 'response' in entry:
+                        base = entry['response']
+                        ratio = difflib.SequenceMatcher(None, base, response).ratio()
+                        if ratio > 0.85:
+                            return jsonify({'status': 'duplicate', 'message': 'Duplicate or similar response detected.'})
 
     entry = {
         'uuid': data['uuid'],
         'id': data['id'],
-        'title': expected_title,
+        'prompt': prompt,
         'response': response,
         'model': model,
         'username': session['username'],
-        'word_count': word_count,
-        'sentence_count': sentence_count,
-        'character_count': char_count,
+        'word_count': len(response.split()),
+        'sentence_count': response.count('.') + response.count('!') + response.count('?'),
+        'character_count': len(response),
         'timestamp': datetime.utcnow().isoformat()
     }
 
@@ -217,7 +209,7 @@ def submit_response(model):
 
     return jsonify({'status': 'success'})
 
-
+# Note: You can now add the rest of your unchanged routes like admin_dashboard, user_dashboard, receipt, etc.
 # (Other routes are unchanged, but similar modifications can be made to integrate Copilot and new prompt templates.)
 
 
@@ -362,14 +354,6 @@ def receipt(username):
 
     return render_template("receipt.html", **context)
 
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
-
-
-
-
-
-
-
