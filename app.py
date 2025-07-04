@@ -331,6 +331,60 @@ def download_model(model):
         flash(f"No output found for model: {model}", "warning")
         return redirect(url_for('admin_dashboard'))
 
+@app.route('/receipt/<username>')
+def receipt(username):
+    # Dummy values for demonstration — replace with real logic
+    from_name = "Project Admin"
+    from_phone = "1234567890"
+    from_email = "admin@example.com"
+
+    to_name = username
+    to_phone = "9876543210"  # Optionally fetch from DB
+    to_email = f"{username}@example.com"
+
+    items = []
+    total = 0.0
+    additional_charges = 0.0
+
+    for model in MODELS:
+        path = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
+        if not os.path.exists(path):
+            continue
+
+        count = 0
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                data = json.loads(line)
+                if data.get("username") == username:
+                    count += 1
+
+        if count > 0:
+            price = 0.10  # ₹ per response
+            amount = count * price
+            total += amount
+            items.append({
+                "description": model.replace("_", " ").title(),
+                "quantity": count,
+                "price": f"₹{price:.2f}",
+                "amount": f"₹{amount:.2f}"
+            })
+
+    final_total = total + additional_charges
+
+    return render_template("receipt.html",
+        receipt_number=f"R-{username[:3].upper()}-{random.randint(1000,9999)}",
+        receipt_date=datetime.now().strftime("%Y-%m-%d"),
+        from_name=from_name,
+        from_phone=from_phone,
+        from_email=from_email,
+        to_name=to_name,
+        to_phone=to_phone,
+        to_email=to_email,
+        items=items,
+        amount=total,
+        additional_charges=additional_charges,
+        total=final_total
+    )
 
 
 if __name__ == "__main__":
