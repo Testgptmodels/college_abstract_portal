@@ -112,7 +112,14 @@ def get_next(model):
         for line in f:
             entry = json.loads(line)
             if entry['id'] not in completed_ids:
-                prompt = f'Prompt Template: Generate a 150–300 word academic abstract on "{entry["title"]}". Avoid conversational tone. Format output as JSON with fields Model, Core_Model, Title, Abstract, Keywords.'
+                prompt = (
+                    f'Prompt Template: Generate a academic abstract of 150 to 300 words on the topic "{entry["title"]}". '
+                    f'Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. '
+                    f'Avoid suggestions, conversational language, and introductory framing. The response should contain all the field '
+                    f'/{{model name :"<model name>"  Core_Model: "<core model name>" Title: "<title content>" '
+                    f'Abstract: "<abstract content>" Keywords: "<comma-separated keywords>"}} use valid json format.'
+                )
+                
                 return jsonify({
                     'uuid': str(uuid4()),
                     'id': entry['id'],
