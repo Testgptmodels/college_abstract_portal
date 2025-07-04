@@ -4,8 +4,7 @@ from uuid import uuid4
 from datetime import datetime
 import json, os, difflib
 import random
-
-
+from flask import render_template
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -336,13 +335,12 @@ def download_model(model):
 
 @app.route('/receipt/<username>')
 def receipt(username):
-    # Dummy values for demonstration — replace with real logic
     from_name = "Project Admin"
     from_phone = "1234567890"
     from_email = "admin@example.com"
 
     to_name = username
-    to_phone = "9876543210"  # Optionally fetch from DB
+    to_phone = "9876543210"
     to_email = f"{username}@example.com"
 
     items = []
@@ -362,14 +360,14 @@ def receipt(username):
                     count += 1
 
         if count > 0:
-            price = 0.10  # ₹ per response
+            price = 0.10
             amount = count * price
             total += amount
             items.append({
                 "description": model.replace("_", " ").title(),
                 "quantity": count,
-                "price": f"₹{price:.2f}",
-                "amount": f"₹{amount:.2f}"
+                "price": price,     # ✅ float, not string
+                "amount": amount    # ✅ float, not string
             })
 
     final_total = total + additional_charges
