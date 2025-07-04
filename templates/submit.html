@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Submit Abstract</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <style>
+    #statusMessage {
+      display: none;
+    }
+    .toast {
+      z-index: 9999;
+    }
+    #task-prompt {
+      white-space: pre-wrap;
+      max-height: 250px;
+      overflow-y: auto;
+      background: #f8f9fa;
+      border: 1px solid #ced4da;
+      padding: 1rem;
+      border-radius: 0.375rem;
+    }
+  </style>
+</head>
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2>Welcome, {{ username }}</h2>
+      <div>
+        <a href="{{ url_for('user_dashboard') }}" class="btn btn-outline-primary me-2">Dashboard</a>
+        <a href="/logout" class="btn btn-outline-danger">Logout</a>
+      </div>
+    </div>
+
+    <div class="mb-4">
+      <label for="modelSelect" class="form-label">Select Model:</label>
+      <select id="modelSelect" class="form-select w-50">
+        <option value="gemini_flash">Gemini Flash 2.5</option>
+        <option value="grok">Grok</option>
+        <option value="chatgpt_4o_mini">ChatGPT-4o Mini</option>
+        <option value="claude">Claude</option>
+        <option value="copilot">Microsoft Copilot</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Prompt Template</h5>
+        <div class="mb-3">
+          <div id="task-prompt" class="text-primary"></div>
+          <button id="copyBtn" class="btn btn-outline-secondary btn-sm mt-2">📋 Copy Prompt</button>
+        </div>
+
+        <textarea id="response" class="form-control mb-3" rows="10" placeholder="Paste your JSON response here only..." readonly onpaste="setTimeout(() => this.removeAttribute('readonly'), 10);"></textarea>
+
+        <div class="d-flex align-items-center mb-3">
+          <button id="pasteBtn" class="btn btn-outline-secondary btn-sm me-2">📥 Paste</button>
+          <button id="clearBtn" class="btn btn-outline-danger btn-sm">🗑 Clear</button>
+        </div>
+
+        <div class="d-flex align-items-center mb-3">
+          <button id="submitBtn" class="btn btn-primary me-3">Submit</button>
+          <span id="statusMessage" class="fw-bold"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3"></div>
+
+  <script>
+    let currentTask = null;
+    let lastPaste = "";
+    let modelKeywords = {
+      "gemini_flash": "gemini",
+      "grok": "grok",
+      "chatgpt_4o_mini": "gpt",
+      "claude": "claude",
+      "copilot": "copilot"
+    };
+
+    async function loadTask() {
+      const model = document.getElementById('modelSelect').value;
+      const res = await fetch(`/get_next/${model}`);
+      const data = await res.json();
+      if (!data.title) {
+        document.getElementById('task-prompt').innerText = '✅ All abstracts completed!';
+        document.getElementById('submitBtn').disabled = true;
+      } else {
+        currentTask = data;
+        document.getElementById('task-prompt').innerText = data.prompt;
+        document.getElementById('response').value = '';
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('statusMessage').style.display = 'none';
+      }
+    }
+
+    document.getElementById('modelSelect').addEventListener('change', loadTask);
+
+    document.getElementById('copyBtn').addEventListener('click', () => {
+      const promptText = document.getElementById('task-prompt').innerText;
+      navigator.clipboard.writeText(promptText).then(() => {
+        showToast('✅ Prompt copied to clipboard.', 'success');
+      });
+    });
+
+    document.getElementById('pasteBtn').addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text.trim() === lastPaste.trim()) {
+          showToast('❌ Same content already pasted. Press clear.', 'danger');
+          return;
+        }
+        document.getElementById('response').value = text.trim();
+        lastPaste = text.trim();
+        showToast('📋 Pasted successfully!', 'success');
+      } catch (err) {
+        showToast('❌ Failed to paste. Allow clipboard permission.', 'danger');
+      }
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      document.getElementById('response').value = '';
+      lastPaste = '';
+      showToast('🗑 Cleared successfully.', 'info');
+    });
+
+    document.getElementById('submitBtn').addEventListener('click', async () => {
+      const model = document.getElementById('modelSelect').value;
+      const responseText = document.getElementById('response').value.trim();
+      if (!responseText) {
+        showToast('❌ Please enter a response.', 'danger');
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch (e) {
+        showToast('❌ Invalid JSON format.', 'danger');
+        return;
+      }
+
+      const modelFieldRaw = parsed.Model || parsed["model name"] || parsed.model_name || parsed.Core_Model || '';
+      const modelLine = modelFieldRaw.toLowerCase();
+      const expectedModelKeyword = modelKeywords[model];
+
+      if (!modelLine.includes(expectedModelKeyword)) {
+        showToast(`❌ Model name does not match selected model (${expectedModelKeyword}).`, 'danger');
+        return;
+      }
+
+      const abstract = parsed.Abstract || '';
+      const wordCount = abstract.trim().split(/\s+/).length;
+      if (wordCount < 50) {
+        showToast('❌ Abstract must be at least 50 words.', 'danger');
+        return;
+      }
+
+      const payload = {
+        uuid: currentTask.uuid,
+        id: currentTask.id,
+        title: parsed.Title,
+        response: responseText
+      };
+
+      const res = await fetch(`/submit/${model}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      if (result.status === 'success') {
+        showToast('✅ Response submitted successfully.', 'success');
+        loadTask();
+      } else if (result.status === 'duplicate') {
+        showToast('❌ Similar response already exists.', 'warning');
+        console.log('Duplicate details:', result.diff);
+      } else {
+        showToast(`❌ Submission failed. ${result.message || ''}`, 'danger');
+      }
+    });
+
+    function showToast(message, type) {
+      const toastContainer = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast align-items-center text-bg-${type} border-0 show`;
+      toast.setAttribute('role', 'alert');
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>`;
+      toastContainer.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    window.onload = loadTask;
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
