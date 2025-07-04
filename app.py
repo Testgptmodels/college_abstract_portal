@@ -205,5 +205,7 @@ def user_dashboard():
 def download_model(model):
     return send_from_directory(RESPONSES_DIR, f"{model}.jsonl", as_attachment=True)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # use the env var PORT or default to 5000
+    app.run(host="0.0.0.0", port=port, debug=True)
