@@ -1,59 +1,73 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <title>Receipt</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .header, .footer { text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #444; padding: 8px; text-align: left; }
-        .no-border { border: none; }
-        .signature { margin-top: 50px; text-align: right; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f9f9f9;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h2 {
+            margin: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            border: 1px solid #444;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .no-border {
+            border: none;
+        }
+        .signature {
+            margin-top: 50px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h2>Receipt</h2>
+        <h2>Payment Receipt</h2>
+        <p><strong>Receipt No:</strong> {{ receipt_number }} &nbsp;&nbsp;&nbsp; <strong>Date:</strong> {{ receipt_date }}</p>
     </div>
-
-    <table>
-        <tr>
-            <td><strong>Receipt Number:</strong> {{ receipt_number }}</td>
-            <td><strong>Date:</strong> {{ receipt_date }}</td>
-        </tr>
-    </table>
-
-    <br>
 
     <table>
         <tr>
             <td>
                 <strong>From:</strong><br>
                 Name: {{ from_name }}<br>
-                Phone No: {{ from_phone }}<br>
-                Email ID: {{ from_email }}
+                Phone: {{ from_phone }}<br>
+                Email: {{ from_email }}
             </td>
             <td>
                 <strong>To:</strong><br>
                 Name: {{ to_name }}<br>
-                Phone No: {{ to_phone }}<br>
-                Email ID: {{ to_email }}
+                Phone: {{ to_phone }}<br>
+                Email: {{ to_email }}
             </td>
         </tr>
     </table>
 
-    <br>
-
+    <h4 style="margin-top: 30px;">Transaction Details</h4>
     <table>
         <thead>
             <tr>
                 <th>Sl. No</th>
                 <th>Description</th>
                 <th>Quantity</th>
-                <th>Price</th>
-                <th>Amount</th>
+                <th>Price (₹)</th>
+                <th>Amount (₹)</th>
             </tr>
         </thead>
         <tbody>
@@ -62,32 +76,31 @@
                 <td>{{ loop.index }}</td>
                 <td>{{ item.description }}</td>
                 <td>{{ item.quantity }}</td>
-                <td>{{ item.price }}</td>
-                <td>{{ item.amount }}</td>
+                <td>{{ "%.2f"|format(item.price) }}</td>
+                <td>{{ "%.2f"|format(item.amount) }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <br>
-
     <table>
         <tr>
-            <td class="no-border" colspan="4" style="text-align:right;"><strong>Amount:</strong></td>
-             <td>{{ "%.2f"|format(amount) }}</td>
+            <td class="no-border" colspan="4" style="text-align: right;"><strong>Subtotal:</strong></td>
+            <td>{{ "%.2f"|format(amount) }}</td>
         </tr>
         <tr>
-            <td class="no-border" colspan="4" style="text-align:right;"><strong>Additional Charges:</strong></td>
+            <td class="no-border" colspan="4" style="text-align: right;"><strong>Additional Charges:</strong></td>
             <td>{{ "%.2f"|format(additional_charges) }}</td>
         </tr>
         <tr>
-            <td class="no-border" colspan="4" style="text-align:right;"><strong>Total:</strong></td>
-             <td><strong>{{ "%.2f"|format(total) }}</strong></td>
+            <td class="no-border" colspan="4" style="text-align: right;"><strong>Total:</strong></td>
+            <td><strong>{{ "%.2f"|format(total) }}</strong></td>
         </tr>
     </table>
 
     <div class="signature">
-        <p>Signature</p>
+        <p>Authorized Signature</p>
+        <p>_______________________</p>
     </div>
 
 </body>
