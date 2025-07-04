@@ -25,7 +25,7 @@
     <a href="/logout" class="btn btn-outline-danger">Logout</a>
   </div>
 
-  <!-- Top Row: Total Answers & User Activity Per Model -->
+  <!-- Row 1: Total Answers & User Activity -->
   <div class="row mb-5">
     <div class="col-md-6">
       <h4>Total Answers Per Model</h4>
@@ -37,7 +37,7 @@
     </div>
   </div>
 
-  <!-- Second Row: Daily User Activity -->
+  <!-- Row 2: Daily User Activity -->
   <div class="row mb-5">
     <div class="col-12">
       <h4>Daily User Activity (Last 30 Days)</h4>
@@ -45,7 +45,7 @@
     </div>
   </div>
 
-  <!-- Third Row: Top Contributors Table -->
+  <!-- Row 3: Top Contributors Table -->
   <div class="row mb-5">
     <div class="col-12">
       <h4>Top Contributors</h4>
@@ -69,11 +69,11 @@
             <tr>
               <td>{{ loop.index }}</td>
               <td>{{ contributor.username }}</td>
-              <td>{{ contributor.gemini_flash or 0 }}</td>
-              <td>{{ contributor.grok or 0 }}</td>
-              <td>{{ contributor.chatgpt_4o_mini or 0 }}</td>
-              <td>{{ contributor.claude or 0 }}</td>
-              <td>{{ contributor.copilot or 0 }}</td>
+              <td>{{ contributor.gemini_flash }}</td>
+              <td>{{ contributor.grok }}</td>
+              <td>{{ contributor.chatgpt_4o_mini }}</td>
+              <td>{{ contributor.claude }}</td>
+              <td>{{ contributor.copilot }}</td>
               <td><strong>{{ contributor.total }}</strong></td>
               <td>
                 <a href="{{ url_for('receipt', username=contributor.username) }}" class="btn btn-sm btn-primary">Receipt</a>
@@ -86,7 +86,7 @@
     </div>
   </div>
 
-  <!-- Fourth Row: Download Buttons -->
+  <!-- Row 4: Download Buttons -->
   <div class="row">
     <div class="col-12">
       <h4>Download Model Outputs</h4>
