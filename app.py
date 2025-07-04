@@ -208,8 +208,31 @@ def admin_dashboard():
 @app.route('/user_dashboard')
 def user_dashboard():
     if 'username' not in session:
-        return redirect(url_for('home'))
-    return render_template("user_dashboard.html", username=session['username'])
+        return redirect(url_for('login'))
+
+    username = session['username']
+    user_responses = []
+
+    for model in MODELS:
+        path = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    data = json.loads(line)
+                    if data.get('username') == username:
+                        user_responses.append((model, data))
+
+    # Aggregate counts
+    model_counter = {}
+    for model in MODELS:
+        model_counter[model] = 0
+    for model, _ in user_responses:
+        model_counter[model] += 1
+
+    model_counts = [{'name': m.replace('_', ' ').title(), 'count': model_counter[m]} for m in MODELS]
+
+    return render_template('user_dashboard.html', username=username, model_counts=model_counts)
+
 
 @app.route('/download/<model>')
 def download_model(model):
