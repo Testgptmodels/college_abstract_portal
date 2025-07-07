@@ -336,8 +336,8 @@ def download_model(model):
 @app.route('/receipt/<username>')
 def receipt(username):
     from_name = "Project Admin"
-    from_phone = "1234567890"
-    from_email = "admin@example.com"
+    from_phone = "8660946035"
+    from_email = "testgptmodels@gmail.com"
 
     to_name = username
     to_phone = "9876543210"
