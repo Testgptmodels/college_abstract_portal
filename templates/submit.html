@@ -6,12 +6,8 @@
   <title>Submit Abstract</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
   <style>
-    #statusMessage {
-      display: none;
-    }
-    .toast {
-      z-index: 9999;
-    }
+    #statusMessage { display: none; }
+    .toast { z-index: 9999; }
     #task-prompt {
       white-space: pre-wrap;
       max-height: 250px;
@@ -21,13 +17,77 @@
       padding: 1rem;
       border-radius: 0.375rem;
     }
+    #jsonModal {
+      display: none;
+      position: fixed;
+      top: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border: 1px solid #ccc;
+      padding: 20px;
+      width: 80%;
+      z-index: 1050;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      border-radius: 10px;
+    }
+    #jsonTemplate {
+      font-family: monospace;
+    }
+    .blink {
+      animation: blinker 0.6s linear 3;
+    }
+    @keyframes blinker {
+      50% { opacity: 0; }
+    }
+
+    /* DARK THEME OVERRIDES */
+    .bg-dark .form-control,
+    .bg-dark .form-select,
+    .bg-dark #task-prompt,
+    .bg-dark .form-label {
+      background-color: #2a2a2a !important;
+      color: #f5f5f5 !important;
+      border-color: #555;
+    }
+
+    .bg-dark .jsonModal {
+      background-color: #1c1c1c;
+      border-color: #444;
+    }
+    
+
+    .bg-dark .card {
+      background-color: #1c1c1c;
+      border-color: #444;
+    }
+
+    .bg-dark .card-body {
+      background-color: #1c1c1c;
+      color: #f8f8f2;
+    }
+
+    .bg-dark option {
+      background-color: #2a2a2a;
+      color: #f5f5f5;
+    }
+    .bg-card-json {
+             background-color: #2a2a2a;
+      color: #f5f5f5;
+
+    }
+    .bg-dark .text-primary {
+      color: #9ddcff !important;
+    }
   </style>
 </head>
-<body class="bg-light">
+<body class="bg-light" id="pageBody">
   <div class="container py-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <h2>Welcome, {{ username }}</h2>
       <div>
+        <button class="btn btn-secondary me-2" onclick="toggleTheme()">Toggle Theme</button>
+        <button id="jsonBtn" class="btn btn-warning me-2" onclick="openJsonTemplate()">.json format</button>
         <a href="{{ url_for('user_dashboard') }}" class="btn btn-outline-primary me-2">Dashboard</a>
         <a href="/logout" class="btn btn-outline-danger">Logout</a>
       </div>
@@ -67,18 +127,46 @@
     </div>
   </div>
 
+  <!-- JSON MODAL -->
+  <div id="jsonModal">
+     <h4 class="card-json">📄 JSON Submission Format</h4>
+    <textarea id="jsonTemplate" readonly class="form-control" rows="15">{
+  "model name": "Gemini 1.5 Pro",
+  "Core Model": "Gemini",
+  "Title": "Evolving Agent Sophistication in Multi-Agent Financial Market Models",
+  "Abstract": "This abstract investigates the progression from simplistic to complex agent behaviors within multi-agent based computational financial market models...",
+  "Keywords": "multi-agent models, financial markets, agent-based modeling, reinforcement learning, behavioral finance, market microstructure",
+  "think": "The user requested an academic abstract...",
+  "word_count": 178,
+  "sentence_count": 8,
+  "character_count": 1137,
+  "generated_at": "2025-07-07 08:17:14"
+}</textarea>
+    <br>
+    <button onclick="copyJson()" class="btn btn-success">Copy</button>
+    <button onclick="closeJsonTemplate()" class="btn btn-danger">Close</button>
+  </div>
+
   <div id="toastContainer" class="position-fixed bottom-0 end-0 p-3"></div>
 
   <script>
     let currentTask = null;
     let lastPaste = "";
-    let modelKeywords = {
+    let themeMode = 0;
+
+    const modelKeywords = {
       "gemini_flash": "gemini",
       "grok": "grok",
       "chatgpt_4o_mini": "gpt",
       "claude": "claude",
       "copilot": "copilot"
     };
+
+    function toggleTheme() {
+      const body = document.getElementById('pageBody');
+      themeMode = (themeMode + 1) % 3;
+      body.className = themeMode === 0 ? "bg-light" : themeMode === 1 ? "bg-white" : "bg-dark text-white";
+    }
 
     async function loadTask() {
       const model = document.getElementById('modelSelect').value;
@@ -97,14 +185,11 @@
     }
 
     document.getElementById('modelSelect').addEventListener('change', loadTask);
-
     document.getElementById('copyBtn').addEventListener('click', () => {
-      const promptText = document.getElementById('task-prompt').innerText;
-      navigator.clipboard.writeText(promptText).then(() => {
+      navigator.clipboard.writeText(document.getElementById('task-prompt').innerText).then(() => {
         showToast('✅ Prompt copied to clipboard.', 'success');
       });
     });
-
     document.getElementById('pasteBtn').addEventListener('click', async () => {
       try {
         const text = await navigator.clipboard.readText();
@@ -115,11 +200,10 @@
         document.getElementById('response').value = text.trim();
         lastPaste = text.trim();
         showToast('📋 Pasted successfully!', 'success');
-      } catch (err) {
+      } catch {
         showToast('❌ Failed to paste. Allow clipboard permission.', 'danger');
       }
     });
-
     document.getElementById('clearBtn').addEventListener('click', () => {
       document.getElementById('response').value = '';
       lastPaste = '';
@@ -137,15 +221,15 @@
       let parsed;
       try {
         parsed = JSON.parse(responseText);
-      } catch (e) {
-        showToast('❌ Invalid JSON format.', 'danger');
+      } catch {
+        showToast('❌ Invalid JSON format. Click ".json format" button.', 'danger');
+        blinkJsonBtn();
         return;
       }
 
       const modelFieldRaw = parsed.Model || parsed["model name"] || parsed.model_name || parsed.Core_Model || '';
       const modelLine = modelFieldRaw.toLowerCase();
       const expectedModelKeyword = modelKeywords[model];
-
       if (!modelLine.includes(expectedModelKeyword)) {
         showToast(`❌ Model name does not match selected model (${expectedModelKeyword}).`, 'danger');
         return;
@@ -188,13 +272,33 @@
       const toast = document.createElement('div');
       toast.className = `toast align-items-center text-bg-${type} border-0 show`;
       toast.setAttribute('role', 'alert');
-      toast.innerHTML = `
-        <div class="d-flex">
-          <div class="toast-body">${message}</div>
-          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-        </div>`;
+      toast.innerHTML = `<div class="d-flex">
+        <div class="toast-body">${message}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>`;
       toastContainer.appendChild(toast);
       setTimeout(() => toast.remove(), 3000);
+    }
+
+    function openJsonTemplate() {
+      document.getElementById('jsonModal').style.display = 'block';
+    }
+
+    function closeJsonTemplate() {
+      document.getElementById('jsonModal').style.display = 'none';
+    }
+
+    function copyJson() {
+      const textArea = document.getElementById("jsonTemplate");
+      textArea.select();
+      document.execCommand("copy");
+      alert("📋 JSON format copied to clipboard!");
+    }
+
+    function blinkJsonBtn() {
+      const btn = document.getElementById("jsonBtn");
+      btn.classList.add("blink");
+      setTimeout(() => btn.classList.remove("blink"), 1800);
     }
 
     window.onload = loadTask;
