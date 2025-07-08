@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: flask-abstract-app
+    env: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    plan: starter
+    disk:
+      name: data
+      mountPath: /var/data  # ✅ CHANGED from /var/data to /mnt/data
+      sizeGB: 1
