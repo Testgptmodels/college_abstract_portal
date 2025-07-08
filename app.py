@@ -1,40 +1,33 @@
-import os
-import shutil
-import json
-import difflib
-import random
-import jsonlines
-from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for, send_from_directory
-from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
-from apscheduler.schedulers.background import BackgroundScheduler
-from collections import defaultdict
 from uuid import uuid4
-import time
+from datetime import datetime
+import json, os, difflib, time
+import random
+from pathlib import Path
+from filelock import FileLock
+from apscheduler.schedulers.background import BackgroundScheduler
+import shutil
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = 'supersecretkey'
 
-# === Persistent storage paths ===
-PERSIST_DIR = "/var/data"
-INPUT_FILE = os.path.join(PERSIST_DIR, "inputs", "arxiv_2000_2025_all_final.jsonl")
-GIT_INPUT_FILE = os.path.join("inputs", "arxiv_2000_2025_all_final.jsonl")
-OUTPUT_DIR = os.path.join(PERSIST_DIR, "outputs")
-PROGRESS_DIR = os.path.join(PERSIST_DIR, "progress")
-USER_LOG_DIR = os.path.join(PERSIST_DIR, "user_logs")
-USERS_FILE = "users.json"
-TIMEOUT_SECONDS = 1800
+# === Constants ===
+USERS_FILE = 'users.json'
+PERSIST_DIR = '/var/data'
+INPUT_FILE = os.path.join(PERSIST_DIR, 'inputs', 'arxiv_2000_2025_all_final.jsonl')
+RESPONSES_DIR = os.path.join(PERSIST_DIR, 'responses')
+OUTPUT_DIR = os.path.join(PERSIST_DIR, 'outputs')
+PROGRESS_DIR = os.path.join(PERSIST_DIR, 'progress')
+USER_LOG_DIR = os.path.join(PERSIST_DIR, 'user_logs')
+TIMEOUT_SECONDS = 900  # 15 minutes
 MODELS = ["gemini_flash", "grok", "chatgpt_4o_mini", "claude", "copilot"]
 
-# === Ensure required folders exist ===
-for folder in ["inputs", "outputs", "progress", "user_logs"]:
-    os.makedirs(os.path.join(PERSIST_DIR, folder), exist_ok=True)
+# === Ensure directories ===
+for path in [RESPONSES_DIR, OUTPUT_DIR, PROGRESS_DIR, USER_LOG_DIR, os.path.dirname(INPUT_FILE)]:
+    os.makedirs(path, exist_ok=True)
 
-# === Copy input file from Git to persistent disk once ===
-if not os.path.exists(INPUT_FILE) and os.path.exists(GIT_INPUT_FILE):
-    shutil.copy(GIT_INPUT_FILE, INPUT_FILE)
-
-# === Ensure user file exists ===
+# === Load Users ===
 if not os.path.exists(USERS_FILE):
     with open(USERS_FILE, 'w') as f:
         json.dump({}, f)
@@ -51,6 +44,123 @@ with open(USERS_FILE, 'r+') as f:
         json.dump(users, f, indent=2)
         f.truncate()
 
+# === Prompt Allocation ===
+from jsonlines import open as jsonl_open
+
+def get_next_prompt(model, username):
+    user_log_file = os.path.join(USER_LOG_DIR, f"{model}_users.jsonl")
+    assigned_ids = set()
+    active_assignments = {}
+
+    if os.path.exists(user_log_file):
+        with open(user_log_file, 'r') as f:
+            for line in f:
+                entry = json.loads(line)
+                if not entry.get("submitted"):
+                    assigned_ids.add(entry["id"])
+                    active_assignments[entry["id"]] = entry
+
+    with jsonl_open(INPUT_FILE) as reader:
+        for idx, obj in enumerate(reader):
+            prompt_id = str(obj.get("id") or idx)
+            if prompt_id not in assigned_ids:
+                timestamp = int(time.time())
+                log_entry = {
+                    "username": username,
+                    "model": model,
+                    "id": prompt_id,
+                    "assigned_at": timestamp,
+                    "submitted": False
+                }
+                with open(user_log_file, 'a') as log:
+                    log.write(json.dumps(log_entry) + "\n")
+                obj["id"] = prompt_id
+                return {
+                    "prompt": obj,
+                    "completed": len(assigned_ids)
+                }
+    return {"message": "✅ All prompts completed!"}
+
+@app.route('/get_next/<model>')
+def get_next(model):
+    if 'username' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify(get_next_prompt(model, session['username']))
+
+# === Reassignment Logic ===
+def reassign_expired_prompts():
+    now = int(time.time())
+    for model in MODELS:
+        user_log_file = os.path.join(USER_LOG_DIR, f"{model}_users.jsonl")
+        if not os.path.exists(user_log_file):
+            continue
+        valid_entries = []
+        with open(user_log_file, 'r') as f:
+            for line in f:
+                entry = json.loads(line)
+                if entry.get("submitted") or now - entry.get("assigned_at", 0) <= TIMEOUT_SECONDS:
+                    valid_entries.append(entry)
+        with open(user_log_file, 'w') as f:
+            for entry in valid_entries:
+                f.write(json.dumps(entry) + '\n')
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(reassign_expired_prompts, 'interval', minutes=5)
+scheduler.start()
+
+# === Submit Route Updates ===
+@app.route('/submit/<model>', methods=['POST'])
+def submit_response(model):
+    if 'username' not in session:
+        return jsonify({'status': 'error', 'message': 'Not logged in'})
+
+    data = request.get_json()
+    username = session['username']
+    response = data.get('response', '').strip()
+    title = data.get('title', '').strip()
+    prompt_id = str(data.get('id'))
+
+    if len(response.split()) < 50:
+        return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
+
+    word_count = len(response.split())
+    sentence_count = response.count('.') + response.count('!') + response.count('?')
+    char_count = len(response)
+
+    entry = {
+        'uuid': str(uuid4()),
+        'id': prompt_id,
+        'title': title,
+        'response': response,
+        'model': model,
+        'username': username,
+        'word_count': word_count,
+        'sentence_count': sentence_count,
+        'character_count': char_count,
+        'timestamp': datetime.utcnow().isoformat()
+    }
+
+    with open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry) + '\n')
+    with open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry) + '\n')
+
+    # Update log to mark as submitted
+    user_log_file = os.path.join(USER_LOG_DIR, f"{model}_users.jsonl")
+    updated = []
+    with open(user_log_file, 'r') as f:
+        for line in f:
+            e = json.loads(line)
+            if e['id'] == prompt_id and e['username'] == username:
+                e['submitted'] = True
+            updated.append(e)
+    with open(user_log_file, 'w') as f:
+        for e in updated:
+            f.write(json.dumps(e) + '\n')
+
+    return jsonify({'status': 'success'})
+
+# === Add remaining routes (register, login, dashboard, etc) below ===
 @app.route("/")
 def home():
     return render_template("login.html")
@@ -103,79 +213,13 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('home'))
-
 @app.route("/submit")
+
+
 def submit():
     if 'username' not in session:
         return redirect(url_for('home'))
     return render_template("submit.html", username=session['username'])
-
-@app.route("/get_next/<model>")
-def get_next(model):
-    if 'username' not in session:
-        return "Unauthorized", 401
-    prompt = None
-    assigned_ids = set()
-    username = session['username']
-    progress_file = os.path.join(PROGRESS_DIR, f"{username}_{model}.json")
-    if os.path.exists(progress_file):
-        with open(progress_file, "r", encoding="utf-8") as f:
-            assigned_ids = set(json.load(f).keys())
-    with jsonlines.open(INPUT_FILE) as reader:
-        for idx, obj in enumerate(reader):
-            pid = str(obj.get("id") or idx)
-            if pid not in assigned_ids:
-                prompt = obj
-                prompt["id"] = pid
-                break
-    if not prompt:
-        return jsonify({"message": "✅ All prompts completed!"})
-    return jsonify({"prompt": prompt, "completed": len(assigned_ids)})
-
-@app.route("/submit/<model>", methods=["POST"])
-def submit_response(model):
-    if 'username' not in session:
-        return jsonify({'status': 'error', 'message': 'Not logged in'})
-
-    data = request.get_json()
-    response = data.get('response', '').strip()
-    username = session['username']
-
-    if len(response.split()) < 50:
-        return jsonify({'status': 'error', 'message': 'Response must be at least 50 words'})
-
-    entry = {
-        'uuid': data['uuid'],
-        'id': data['id'],
-        'title': data['title'],
-        'response': response,
-        'model': model,
-        'username': username,
-        'word_count': len(response.split()),
-        'sentence_count': response.count('.') + response.count('!') + response.count('?'),
-        'character_count': len(response),
-        'timestamp': datetime.utcnow().isoformat()
-    }
-
-    # Save response
-    with jsonlines.open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), "a") as f:
-        f.write(entry)
-
-    # Save progress
-    progress_file = os.path.join(PROGRESS_DIR, f"{username}_{model}.json")
-    progress = {}
-    if os.path.exists(progress_file):
-        with open(progress_file, "r") as f:
-            progress = json.load(f)
-    progress[data['id']] = entry['uuid']
-    with open(progress_file, "w") as f:
-        json.dump(progress, f)
-
-    # Save user log
-    with jsonlines.open(os.path.join(USER_LOG_DIR, f"{username}_{model}.jsonl"), "a") as f:
-        f.write(entry)
-
-    return jsonify({'status': 'success'})
 
 @app.route("/user_dashboard")
 def user_dashboard():
