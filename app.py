@@ -9,6 +9,7 @@ from filelock import FileLock
 from apscheduler.schedulers.background import BackgroundScheduler
 import shutil
 from collections import defaultdict
+from jsonlines import open as jsonl_open
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -45,21 +46,22 @@ with open(USERS_FILE, 'r+') as f:
         json.dump(users, f, indent=2)
         f.truncate()
 
-# === Prompt Allocation ===
-from jsonlines import open as jsonl_open
-
+# === Prompt Allocation with Expiry Check ===
 def get_next_prompt(model, username):
     user_log_file = os.path.join(USER_LOG_DIR, f"{model}_users.jsonl")
     assigned_ids = set()
     active_assignments = {}
+    now = int(time.time())
 
     if os.path.exists(user_log_file):
         with open(user_log_file, 'r') as f:
             for line in f:
                 entry = json.loads(line)
                 if not entry.get("submitted"):
-                    assigned_ids.add(entry["id"])
-                    active_assignments[entry["id"]] = entry
+                    assigned_at = entry.get("assigned_at", 0)
+                    if now - assigned_at < TIMEOUT_SECONDS:
+                        assigned_ids.add(entry["id"])
+                        active_assignments[entry["id"]] = entry
 
     with jsonl_open(INPUT_FILE) as reader:
         for idx, obj in enumerate(reader):
@@ -80,6 +82,7 @@ def get_next_prompt(model, username):
                     "prompt": obj,
                     "completed": len(assigned_ids)
                 }
+
     return {"message": "✅ All prompts completed!"}
 
 @app.route('/get_next/<model>')
@@ -109,7 +112,7 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(reassign_expired_prompts, 'interval', minutes=5)
 scheduler.start()
 
-# === Submit Route Updates ===
+# === Submit Route ===
 @app.route('/submit/<model>', methods=['POST'])
 def submit_response(model):
     if 'username' not in session:
@@ -146,7 +149,6 @@ def submit_response(model):
     with open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), 'a', encoding='utf-8') as f:
         f.write(json.dumps(entry) + '\n')
 
-    # Update log to mark as submitted
     user_log_file = os.path.join(USER_LOG_DIR, f"{model}_users.jsonl")
     updated = []
     with open(user_log_file, 'r') as f:
@@ -160,8 +162,6 @@ def submit_response(model):
             f.write(json.dumps(e) + '\n')
 
     return jsonify({'status': 'success'})
-
-# === Add remaining routes (register, login, dashboard, etc) below ===
 
 
 # === Add remaining routes (register, login, dashboard, etc) below ===
