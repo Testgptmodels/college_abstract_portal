@@ -13,6 +13,7 @@ from jsonlines import open as jsonl_open
 from datetime import datetime, timedelta
 
 
+
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
@@ -360,6 +361,56 @@ def admin_dashboard():
         total_answers=total_answers,
         user_model_activity=user_model_activity,
         daily_user_activity=daily_user_activity
+    )
+
+
+@app.route("/receipt/<username>")
+def receipt(username):
+    # === Settings ===
+    base_price_per_submission = 10.0
+    additional_charges = 0.0
+
+    # === Collect submission data ===
+    items = []
+    total_submitted = 0
+
+    for model in MODELS:
+        file_path = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
+        if not os.path.exists(file_path):
+            continue
+        with open(file_path, "r", encoding="utf-8") as f:
+            count = 0
+            for line in f:
+                entry = json.loads(line)
+                if entry.get("username") == username:
+                    count += 1
+            if count > 0:
+                items.append({
+                    "description": f"{model.replace('_', ' ').title()} Abstracts",
+                    "quantity": count,
+                    "price": base_price_per_submission,
+                    "amount": base_price_per_submission * count
+                })
+                total_submitted += count
+
+    # === Calculate amounts ===
+    amount = sum(item["amount"] for item in items)
+    total = amount + additional_charges
+
+    # === Render Receipt ===
+    return render_template("receipt.html",
+        receipt_number=f"R-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        receipt_date=datetime.now().strftime("%Y-%m-%d"),
+        from_name="Admin",
+        from_phone="0000000000",
+        from_email="admin@example.com",
+        to_name=username,
+        to_phone="N/A",
+        to_email=f"{username}@example.com",
+        items=items,
+        amount=amount,
+        additional_charges=additional_charges,
+        total=total
     )
 
 
