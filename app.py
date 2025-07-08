@@ -148,5 +148,3 @@ def submit_response(model):
 
     return jsonify({"status": "success", "id": entry_id})
 
-if __name__ == "__main__":
-    app.run(debug=True, port=10000)
