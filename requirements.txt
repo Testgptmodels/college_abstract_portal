@@ -6,3 +6,6 @@ uuid
 gunicorn 
 jinja2               
 requests
+itsdangerous
+filelock
+apscheduler
