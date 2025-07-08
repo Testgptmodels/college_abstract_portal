@@ -27,8 +27,8 @@ if not os.path.exists(USERS_FILE):
 
 # === Ensure shared input file is present ===
 def ensure_initial_data():
-    os.makedirs("/mnt/data/input", exist_ok=True)
-    target = "/mnt/data/input/arxiv_2000_2025_all_final.jsonl"
+    os.makedirs("/mnt/data/inputs", exist_ok=True)
+    target = "/mnt/data/inputs/arxiv_2000_2025_all_final.jsonl"
     if not os.path.exists(target):
         os.makedirs("inputs", exist_ok=True)
         shutil.copy("inputs/arxiv_2000_2025_all_final.jsonl", target)
