@@ -1,185 +1,152 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
-from werkzeug.security import generate_password_hash, check_password_hash
-from uuid import uuid4
-from datetime import datetime
-import json, os, difflib, time
-import random
+from flask import Flask, render_template, request, redirect, session, jsonify
+import os
+import jsonlines
 from pathlib import Path
-from filelock import FileLock
-from apscheduler.schedulers.background import BackgroundScheduler
-import shutil
+import uuid
+import json
+from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey'
+app.secret_key = "your-secret-key"
 
-# === Configuration ===
-INPUT_FILE = "/mnt/data/input/arxiv_2000_2025_all_final.jsonl"
-USER_LOG_DIR = "user_logs"
-os.makedirs(USER_LOG_DIR, exist_ok=True)
+# === Persistent storage paths ===
+BASE_PATH = "/var/data"
+INPUT_FILE = os.path.join(BASE_PATH, "inputs", "arxiv_2000_2025_all_final.jsonl")
+OUTPUT_DIR = os.path.join(BASE_PATH, "outputs")
+PROGRESS_DIR = os.path.join(BASE_PATH, "progress")
+USER_LOG_DIR = os.path.join(BASE_PATH, "user_logs")
 
-MODELS = ["gemini_flash", "grok", "chatgpt_4o_mini", "claude", "copilot"]
+# === Ensure required folders exist ===
+for folder in [os.path.dirname(INPUT_FILE), OUTPUT_DIR, PROGRESS_DIR, USER_LOG_DIR]:
+    os.makedirs(folder, exist_ok=True)
 
-USERS_FILE = "users.json"
-if not os.path.exists(USERS_FILE):
-    with open(USERS_FILE, "w") as f:
-        json.dump({}, f)
+# === In-memory user DB ===
+USERS = {}
 
+@app.route("/")
+def index():
+    if "username" in session:
+        return redirect("/user_dashboard")
+    return render_template("login.html")
 
-# === Ensure shared input file is present ===
-def ensure_initial_data():
-    os.makedirs("/mnt/data/input", exist_ok=True)
-    target = "/mnt/data/input/arxiv_2000_2025_all_final.jsonl"
-    if not os.path.exists(target):
-        # Only copy if source exists (avoid crash on fresh deploy)
-        if os.path.exists("inputs/arxiv_2000_2025_all_final.jsonl"):
-            shutil.copy("inputs/arxiv_2000_2025_all_final.jsonl", target)
-
-ensure_initial_data()
-
-
-# === Helper to assign next prompt ===
-def get_next_prompt(model_name: str, user_id: str) -> dict:
-    input_file = INPUT_FILE
-    user_log_file = os.path.join(USER_LOG_DIR, f"{model_name}_users.jsonl")
-    lock_file = f"{user_log_file}.lock"
-
-    with FileLock(lock_file):
-        if not os.path.exists(input_file):
-            return {"error": "Prompt file not found."}
-
-        with open(input_file, 'r', encoding='utf-8') as f:
-            prompts = [json.loads(line) for line in f]
-
-        assigned_indices = set()
-        user_map = {}
-
-        if os.path.exists(user_log_file):
-            with open(user_log_file, 'r', encoding='utf-8') as log:
-                for line in log:
-                    entry = json.loads(line)
-                    assigned_indices.add(entry['index'])
-                    user_map[entry['index']] = entry
-
-        for i, prompt in enumerate(prompts):
-            if i not in assigned_indices:
-                log_entry = {
-                    "user_id": user_id,
-                    "index": i,
-                    "title": prompt.get("title", ""),
-                    "assigned_at": int(time.time()),
-                    "submitted": False
-                }
-                with open(user_log_file, 'a', encoding='utf-8') as log:
-                    log.write(json.dumps(log_entry) + '\n')
-                prompt["index_assigned"] = i
-                prompt["model"] = model_name
-                prompt["note"] = f"Prompt #{i} assigned."
-                return prompt
-
-        return {"error": f"All prompts exhausted for model: {model_name}"}
-
-
-# === Authentication Routes ===
-@app.route('/register', methods=['GET', 'POST'])
+@app.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = generate_password_hash(request.form['password'])
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        USERS[username] = password
+        return redirect("/")
+    return render_template("register.html")
 
-        with open(USERS_FILE, 'r+') as f:
-            users = json.load(f)
-            if username in users:
-                return "Username already exists!"
-            users[username] = password
-            f.seek(0)
-            json.dump(users, f)
-            f.truncate()
-
-        return redirect(url_for('login'))
-    return render_template('register.html')
-
-
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/login", methods=["POST"])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+    username = request.form["username"]
+    password = request.form["password"]
+    if username in USERS and USERS[username] == password:
+        session["username"] = username
+        return redirect("/user_dashboard")
+    return "Invalid credentials", 403
 
-        with open(USERS_FILE, 'r') as f:
-            users = json.load(f)
-            if username in users and check_password_hash(users[username], password):
-                session['username'] = username
-                return redirect(url_for('user_dashboard'))
-            else:
-                return "Invalid credentials!"
-
-    return render_template('login.html')
-
-
-@app.route('/logout')
+@app.route("/logout")
 def logout():
-    session.pop('username', None)
-    return redirect(url_for('login'))
+    session.clear()
+    return redirect("/")
 
-
-# === Main Dashboard ===
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-
-@app.route('/user_dashboard')
+@app.route("/user_dashboard")
 def user_dashboard():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    return render_template('user_dashboard.html', username=session['username'], models=MODELS)
+    if "username" not in session:
+        return redirect("/")
+    return render_template("user_dashboard.html")
 
+@app.route("/submit")
+def submit():
+    if "username" not in session:
+        return redirect("/")
+    return render_template("abstract_submit.html")
 
-# === Submit Prompt Response ===
-@app.route('/submit/<model>', methods=['GET', 'POST'])
-def submit(model):
-    if 'username' not in session:
-        return redirect(url_for('login'))
-
-    if request.method == 'POST':
-        data = request.form.to_dict()
-        model_name = model
-        output_file = f"/mnt/data/output_{model_name}.jsonl"
-        data["user"] = session['username']
-        data["submitted_at"] = int(time.time())
-
-        # Mark as submitted in user log
-        log_file = os.path.join(USER_LOG_DIR, f"{model_name}_users.jsonl")
-        updated_lines = []
-        if os.path.exists(log_file):
-            with open(log_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    record = json.loads(line)
-                    if record["user_id"] == session['username'] and record["index"] == int(data.get("index_assigned", -1)):
-                        record["submitted"] = True
-                    updated_lines.append(json.dumps(record))
-
-            with open(log_file, "w", encoding="utf-8") as f:
-                f.write("\n".join(updated_lines) + "\n")
-
-        # Save response
-        with open(output_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(data) + "\n")
-
-        return "Submission successful!"
-    return render_template('abstract_submit.html', model=model)
-
-
-# === API to fetch next prompt ===
-@app.route('/get_next/<model>')
+@app.route("/get_next/<model>")
 def get_next(model):
-    user_id = session.get("username", "anonymous")
-    model = model.lower()
-    if model not in MODELS:
-        return jsonify({"error": "Model not supported."})
-    return jsonify(get_next_prompt(model, user_id))
+    if "username" not in session:
+        return "Unauthorized", 401
 
+    username = session["username"]
+    user_progress_file = os.path.join(PROGRESS_DIR, f"{username}_{model}.json")
 
-# === Run Locally ===
-if __name__ == '__main__':
-    app.run(debug=True)
+    # Load progress
+    assigned = {}
+    if os.path.exists(user_progress_file):
+        with open(user_progress_file, "r", encoding="utf-8") as f:
+            assigned = json.load(f)
+
+    # Load shared input file
+    next_prompt = None
+    with jsonlines.open(INPUT_FILE) as reader:
+        for idx, obj in enumerate(reader):
+            prompt_id = str(obj.get("id") or idx)
+            if prompt_id not in assigned:
+                next_prompt = obj
+                next_prompt["id"] = prompt_id
+                break
+
+    if not next_prompt:
+        return jsonify({"message": "✅ All prompts completed!"})
+
+    return jsonify({
+        "prompt": next_prompt,
+        "completed": len(assigned)
+    })
+
+@app.route("/submit/<model>", methods=["POST"])
+def submit_response(model):
+    if "username" not in session:
+        return "Unauthorized", 401
+
+    data = request.get_json()
+    username = session["username"]
+
+    title = data.get("title", "").strip()
+    abstract = data.get("abstract", "").strip()
+    think = data.get("think", "").strip()
+    prompt_id = str(data.get("id"))
+
+    if not title or not abstract or not prompt_id:
+        return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+    entry_id = str(uuid.uuid4())
+    timestamp = datetime.now().isoformat()
+
+    entry = {
+        "uuid": entry_id,
+        "id": prompt_id,
+        "title": title,
+        "abstract": abstract,
+        "think": think,
+        "submitted_by": username,
+        "submitted_at": timestamp,
+        "model": model
+    }
+
+    # Save output
+    output_path = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
+    with jsonlines.open(output_path, "a") as writer:
+        writer.write(entry)
+
+    # Update progress
+    progress_file = os.path.join(PROGRESS_DIR, f"{username}_{model}.json")
+    progress = {}
+    if os.path.exists(progress_file):
+        with open(progress_file, "r", encoding="utf-8") as f:
+            progress = json.load(f)
+    progress[prompt_id] = entry_id
+    with open(progress_file, "w", encoding="utf-8") as f:
+        json.dump(progress, f)
+
+    # Log per user
+    user_log_file = os.path.join(USER_LOG_DIR, f"{username}_{model}.jsonl")
+    with jsonlines.open(user_log_file, "a") as writer:
+        writer.write(entry)
+
+    return jsonify({"status": "success", "id": entry_id})
+
+if __name__ == "__main__":
+    app.run(debug=True, port=10000)

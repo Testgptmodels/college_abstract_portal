@@ -8,8 +8,7 @@ services:
     plan: starter
     disk:
       name: data
-      mountPath: /mnt/data  # ✅ CHANGED from /var/data to /mnt/data
+      mountPath: /var/data  # ✅ must match app.py
       sizeGB: 1
-
 
 
