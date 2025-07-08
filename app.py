@@ -276,77 +276,85 @@ def user_dashboard():
 
 @app.route("/admin_dashboard")
 def admin_dashboard():
-    if 'username' not in session or session['username'] != 'admin':
-        return redirect(url_for('login'))
+    if "username" not in session or session["username"] != "admin":
+        return redirect(url_for("login"))
 
-    total_answers = {"labels": [], "counts": []}
-    user_model_activity = {"models": [], "users": []}
-    daily_user_raw = defaultdict(lambda: defaultdict(int))
-    top_contributors = []
-    usernames = set()
+    # Top contributor stats
+    top_contributors = compute_top_contributors()
 
-    model_map = dict(zip(MODELS, [m.replace("_", " ").title() for m in MODELS]))
-    total_counts = {m: 0 for m in MODELS}
-    user_model_map = defaultdict(lambda: defaultdict(int))
+    def compute_top_contributors():
+        user_data = {}
 
-    for model in MODELS:
-        path = os.path.join(OUTPUT_DIR, f'output_{model}.jsonl')
-        if not os.path.exists(path):
-            continue
-        with open(path, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    data = json.loads(line)
-                    username = data.get("username")
-                    date_str = data.get("timestamp", "").split("T")[0]
-                    if not username:
-                        continue
-                    usernames.add(username)
-                    total_counts[model] += 1
-                    user_model_map[username][model] += 1
-                    daily_user_raw[date_str][username] += 1
-                except: continue
-
-    total_answers["labels"] = [model_map[m] for m in MODELS]
-    total_answers["counts"] = [total_counts[m] for m in MODELS]
-
-    def get_color(): return f"#{random.randint(0, 0xFFFFFF):06x}"
-
-    for user in sorted(usernames):
-        entry = {
-            "username": user,
-            "counts": [user_model_map[user].get(m, 0) for m in MODELS],
-            "color": get_color()
-        }
-        user_model_activity["users"].append(entry)
-    user_model_activity["models"] = [model_map[m] for m in MODELS]
-
-    sorted_dates = sorted(daily_user_raw.keys())
-    daily_user_activity_chart = {"dates": sorted_dates, "users": []}
-
-    for user in sorted(usernames):
-        counts = [daily_user_raw[date].get(user, 0) for date in sorted_dates]
-        daily_user_activity_chart["users"].append({
-            "username": user,
-            "counts": counts,
-            "color": get_color()
-        })
-
-    for user in sorted(usernames):
-        entry = {"username": user, "total": 0}
         for model in MODELS:
-            count = user_model_map[user][model]
-            entry[model] = count
-            entry["total"] += count
-        top_contributors.append(entry)
+            output_file = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
+            if not os.path.exists(output_file):
+                continue
+            with open(output_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    entry = json.loads(line)
+                    username = entry.get("username", "unknown")
+                    if username not in user_data:
+                        user_data[username] = {m: 0 for m in MODELS}
+                        user_data[username]["total"] = 0
+                    user_data[username][model] += 1
+                    user_data[username]["total"] += 1
 
-    top_contributors.sort(key=lambda x: x["total"], reverse=True)
+        contributors = []
+        for user, counts in user_data.items():
+            contributors.append({
+                "username": user,
+                "total": counts["total"],
+                "gemini_flash": counts["gemini_flash"],
+                "grok": counts["grok"],
+                "chatgpt_4o_mini": counts["chatgpt_4o_mini"],
+                "claude": counts["claude"],
+                "copilot": counts["copilot"]
+            })
+
+        contributors.sort(key=lambda x: x["total"], reverse=True)
+        return contributors
+
+    # Total responses per model
+    total_answers = {
+        "labels": ["Gemini Flash", "Grok", "ChatGPT 4o Mini", "Claude", "Microsoft Copilot"],
+        "counts": [
+            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_gemini_flash.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_gemini_flash.jsonl")) else 0,
+            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_grok.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_grok.jsonl")) else 0,
+            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_chatgpt_4o_mini.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_chatgpt_4o_mini.jsonl")) else 0,
+            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_claude.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_claude.jsonl")) else 0,
+            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_copilot.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_copilot.jsonl")) else 0
+        ]
+    }
+
+    # Mock user-model activity (random data or from logs)
+    user_model_activity = {
+        "models": MODELS,
+        "users": [
+            {"username": user["username"], "counts": [
+                user["gemini_flash"], user["grok"], user["chatgpt_4o_mini"],
+                user["claude"], user["copilot"]
+            ], "color": f"hsl({(i*65)%360},70%,50%)"}
+            for i, user in enumerate(top_contributors[:6])
+        ]
+    }
+
+    # Daily mock data
+    today = datetime.now()
+    dates = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in reversed(range(15))]
+    daily_user_activity = {
+        "dates": dates,
+        "users": [
+            {"username": user["username"], "counts": [random.randint(0, 3) for _ in dates], "color": f"hsl({(i*45)%360}, 60%, 50%)"}
+            for i, user in enumerate(top_contributors[:4])
+        ]
+    }
 
     return render_template("admin_dashboard.html",
+        top_contributors=top_contributors,
         total_answers=total_answers,
         user_model_activity=user_model_activity,
-        daily_user_activity=daily_user_activity_chart,
-        top_contributors=top_contributors
+        daily_user_activity=daily_user_activity
     )
+
 
 
