@@ -8,5 +8,8 @@ services:
     plan: starter
     disk:
       name: data
-      mountPath: /var/data  # ✅ CHANGED from /var/data to /mnt/data
+      mountPath: /mnt/data  # ✅ CHANGED from /var/data to /mnt/data
       sizeGB: 1
+
+
+
