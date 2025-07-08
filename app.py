@@ -274,6 +274,41 @@ def user_dashboard():
 
     return render_template('user_dashboard.html', username=username, model_counts=model_counts)
 
+
+# Define the helper function at global scope
+def compute_top_contributors():
+    user_data = {}
+
+    for model in MODELS:
+        output_file = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
+        if not os.path.exists(output_file):
+            continue
+        with open(output_file, "r", encoding="utf-8") as f:
+            for line in f:
+                entry = json.loads(line)
+                username = entry.get("username", "unknown")
+                if username not in user_data:
+                    user_data[username] = {m: 0 for m in MODELS}
+                    user_data[username]["total"] = 0
+                user_data[username][model] += 1
+                user_data[username]["total"] += 1
+
+    contributors = []
+    for user, counts in user_data.items():
+        contributors.append({
+            "username": user,
+            "total": counts["total"],
+            "gemini_flash": counts["gemini_flash"],
+            "grok": counts["grok"],
+            "chatgpt_4o_mini": counts["chatgpt_4o_mini"],
+            "claude": counts["claude"],
+            "copilot": counts["copilot"]
+        })
+
+    contributors.sort(key=lambda x: x["total"], reverse=True)
+    return contributors
+
+
 @app.route("/admin_dashboard")
 def admin_dashboard():
     if "username" not in session or session["username"] != "admin":
@@ -282,38 +317,7 @@ def admin_dashboard():
     # Top contributor stats
     top_contributors = compute_top_contributors()
 
-    def compute_top_contributors():
-        user_data = {}
-
-        for model in MODELS:
-            output_file = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
-            if not os.path.exists(output_file):
-                continue
-            with open(output_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    entry = json.loads(line)
-                    username = entry.get("username", "unknown")
-                    if username not in user_data:
-                        user_data[username] = {m: 0 for m in MODELS}
-                        user_data[username]["total"] = 0
-                    user_data[username][model] += 1
-                    user_data[username]["total"] += 1
-
-        contributors = []
-        for user, counts in user_data.items():
-            contributors.append({
-                "username": user,
-                "total": counts["total"],
-                "gemini_flash": counts["gemini_flash"],
-                "grok": counts["grok"],
-                "chatgpt_4o_mini": counts["chatgpt_4o_mini"],
-                "claude": counts["claude"],
-                "copilot": counts["copilot"]
-            })
-
-        contributors.sort(key=lambda x: x["total"], reverse=True)
-        return contributors
-
+    
     # Total responses per model
     total_answers = {
         "labels": ["Gemini Flash", "Grok", "ChatGPT 4o Mini", "Claude", "Microsoft Copilot"],
