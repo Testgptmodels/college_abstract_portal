@@ -2,22 +2,50 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from werkzeug.security import generate_password_hash, check_password_hash
 from uuid import uuid4
 from datetime import datetime
-import json, os, difflib
+import json, os, difflib, time
 import random
-from flask import render_template
+from pathlib import Path
+from filelock import FileLock
+from apscheduler.schedulers.background import BackgroundScheduler
+import shutil
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
+# === Constants ===
 USERS_FILE = 'users.json'
-RESPONSES_DIR = 'responses'
-INPUT_FILE = 'backend/inputs/input.jsonl'
-OUTPUT_DIR = 'backend/outputs'
+PERSIST_DIR = '/var/data'
+INPUT_DIR = os.path.join(PERSIST_DIR, "input")
+RESPONSES_DIR = os.path.join(PERSIST_DIR, 'responses')
+OUTPUT_DIR = os.path.join(PERSIST_DIR, 'outputs')
+PROGRESS_DIR = os.path.join(PERSIST_DIR, "progress")
+USER_LOG_DIR = os.path.join(PERSIST_DIR, "user_logs")
+TIMEOUT_SECONDS = 1800  # 30 minutes
 MODELS = ["gemini_flash", "grok", "chatgpt_4o_mini", "claude", "copilot"]
 
-os.makedirs(RESPONSES_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# === Ensure initial persistent files ===
+def ensure_initial_data():
+    os.makedirs(INPUT_DIR, exist_ok=True)
+    for model in MODELS:
+        fname = f"input_{model}.jsonl"
+        dest_path = os.path.join(INPUT_DIR, fname)
+        src_path = os.path.join("initial_data", fname)
+        if not os.path.exists(dest_path) and os.path.exists(src_path):
+            shutil.copy(src_path, dest_path)
+            print(f"[INFO] Copied {src_path} to {dest_path}")
 
+ensure_initial_data()
+
+# === Ensure directories ===
+for path in [RESPONSES_DIR, OUTPUT_DIR, PROGRESS_DIR, USER_LOG_DIR]:
+    os.makedirs(path, exist_ok=True)
+
+# === Ensure response/outputs files exist ===
+for model in MODELS:
+    open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a').close()
+    open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), 'a').close()
+
+# === User File Setup ===
 if not os.path.exists(USERS_FILE):
     with open(USERS_FILE, 'w') as f:
         json.dump({}, f)
@@ -34,9 +62,8 @@ with open(USERS_FILE, 'r+') as f:
         json.dump(users, f, indent=2)
         f.truncate()
 
-for model in MODELS:
-    open(os.path.join(RESPONSES_DIR, f"{model}.jsonl"), 'a').close()
-    open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), 'a').close()
+# === Your Flask routes go here ===
+# 💡 Leave your existing routes and functions untouched here.
 
 @app.route('/')
 def home():
@@ -387,7 +414,36 @@ def receipt(username):
         total=final_total
     )
 
+# Example: append just below your existing Flask routes
+def reassign_expired_prompts(model_name: str):
+    user_log_file = os.path.join(USER_LOG_DIR, f"{model_name}_users.jsonl")
+    if not os.path.exists(user_log_file):
+        return
 
+    now = int(time.time())
+    valid_entries = []
+
+    with open(user_log_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            entry = json.loads(line)
+            if entry.get("submitted") or now - entry.get("assigned_at", 0) <= TIMEOUT_SECONDS:
+                valid_entries.append(entry)
+
+    with open(user_log_file, 'w', encoding='utf-8') as f:
+        for entry in valid_entries:
+            f.write(json.dumps(entry) + '\n')
+
+
+def reassign_all_expired():
+    for model in MODELS:
+        reassign_expired_prompts(model)
+
+# === Scheduler Setup ===
+scheduler = BackgroundScheduler()
+scheduler.add_job(reassign_all_expired, 'interval', minutes=5)
+scheduler.start()
+
+# === Flask App Start ===
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # use the env var PORT or default to 5000
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
