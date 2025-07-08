@@ -366,11 +366,17 @@ def admin_dashboard():
 
 @app.route("/receipt/<username>")
 def receipt(username):
-    # === Settings ===
     base_price_per_submission = 10.0
     additional_charges = 0.0
 
-    # === Collect submission data ===
+    # Load user details from users.json
+    with open(USERS_FILE, 'r') as f:
+        users = json.load(f)
+    user_info = users.get(username, {})
+    to_phone = user_info.get("phone", "N/A")
+    to_email = user_info.get("email", f"{username}@example.com")
+
+    # Collect submission data
     items = []
     total_submitted = 0
 
@@ -393,11 +399,9 @@ def receipt(username):
                 })
                 total_submitted += count
 
-    # === Calculate amounts ===
     amount = sum(item["amount"] for item in items)
     total = amount + additional_charges
 
-    # === Render Receipt ===
     return render_template("receipt.html",
         receipt_number=f"R-{datetime.now().strftime('%Y%m%d%H%M%S')}",
         receipt_date=datetime.now().strftime("%Y-%m-%d"),
@@ -405,13 +409,23 @@ def receipt(username):
         from_phone="0000000000",
         from_email="admin@example.com",
         to_name=username,
-        to_phone="N/A",
-        to_email=f"{username}@example.com",
+        to_phone=to_phone,
+        to_email=to_email,
         items=items,
         amount=amount,
         additional_charges=additional_charges,
         total=total
     )
+
+from flask import send_file
+
+@app.route('/download/<model>')
+def download_model(model):
+    filepath = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
+    if not os.path.exists(filepath):
+        return f"No output found for model: {model}", 404
+    return send_file(filepath, as_attachment=True)
+
 
 
 
