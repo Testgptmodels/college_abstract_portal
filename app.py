@@ -8,6 +8,7 @@ from pathlib import Path
 from filelock import FileLock
 from apscheduler.schedulers.background import BackgroundScheduler
 import shutil
+from collections import defaultdict
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
@@ -159,6 +160,9 @@ def submit_response(model):
             f.write(json.dumps(e) + '\n')
 
     return jsonify({'status': 'success'})
+
+# === Add remaining routes (register, login, dashboard, etc) below ===
+
 
 # === Add remaining routes (register, login, dashboard, etc) below ===
 @app.route("/")
@@ -321,27 +325,4 @@ def admin_dashboard():
         top_contributors=top_contributors
     )
 
-# === Scheduler to cleanup expired prompts ===
-def reassign_expired_prompts(model_name: str):
-    file_path = os.path.join(USER_LOG_DIR, f"{model_name}_users.jsonl")
-    if not os.path.exists(file_path):
-        return
 
-    now = int(time.time())
-    valid_entries = []
-    with open(file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            entry = json.loads(line)
-            if entry.get("submitted") or now - entry.get("assigned_at", 0) <= TIMEOUT_SECONDS:
-                valid_entries.append(entry)
-    with open(file_path, 'w', encoding='utf-8') as f:
-        for entry in valid_entries:
-            f.write(json.dumps(entry) + '\n')
-
-def reassign_all_expired():
-    for model in MODELS:
-        reassign_expired_prompts(model)
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(reassign_all_expired, 'interval', minutes=5)
-scheduler.start()
