@@ -53,21 +53,28 @@ def get_next_prompt(model, username):
     active_assignments = {}
     now = int(time.time())
 
+    # Track submitted and recently assigned prompt IDs
     if os.path.exists(user_log_file):
         with open(user_log_file, 'r') as f:
             for line in f:
                 entry = json.loads(line)
-                if not entry.get("submitted"):
-                    assigned_at = entry.get("assigned_at", 0)
-                    if now - assigned_at < TIMEOUT_SECONDS:
-                        assigned_ids.add(entry["id"])
-                        active_assignments[entry["id"]] = entry
+                prompt_id = str(entry["id"])
+                if entry.get("submitted"):
+                    assigned_ids.add(prompt_id)  # Already submitted
+                elif now - entry.get("assigned_at", 0) < TIMEOUT_SECONDS:
+                    assigned_ids.add(prompt_id)  # Still within timeout
+                    active_assignments[prompt_id] = entry
 
+    completed = len([
+        1 for v in active_assignments.values()
+        if v.get("submitted")
+    ])
+
+    # Find the next unassigned prompt
     with jsonl_open(INPUT_FILE) as reader:
         for idx, obj in enumerate(reader):
             prompt_id = str(obj.get("id") or idx)
             if prompt_id not in assigned_ids:
-                title = obj.get("title", "Untitled")
                 timestamp = int(time.time())
                 log_entry = {
                     "username": username,
@@ -79,31 +86,27 @@ def get_next_prompt(model, username):
                 with open(user_log_file, 'a') as log:
                     log.write(json.dumps(log_entry) + "\n")
 
-                prompt_text = (
-                    f'Prompt Template: Generate a academic abstract of 150 to 300 words on the topic "{title}". '
-                    f'Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. Avoid suggestions, '
-                    f'conversational language, and introductory framing. The response should contain all the below mention:\n\n'
-                    '{\n'
-                    '  "model name": "<GPT model name - the name of the AI model generating the response>",\n'
-                    '  "Core_Model": "<core GPT model name -  name of the core language model used >",\n'
-                    f'  "Title": "{title}",\n'
-                    '  "Abstract": "<abstract content - should match the title!>",\n'
-                    '  "Keywords": "<comma-separated keywords - should match the domain of the abstract>",\n'
-                    '  "think": "<should reflect reasoning behind abstract generation>",\n'
-                    '  "word_count": <word count of abstract>,\n'
-                    '  "sentence_count": <sentence count of abstract>,\n'
-                    '  "character_count": <character count of abstract>,\n'
-                    '  "generated_at": "<Timestamp>"\n'
-                    '}'
+                obj["id"] = prompt_id
+                obj["prompt"] = (
+                    f'Prompt Template: Generate a academic abstract of 150 to 300 words on the topic "{obj["title"]}". '
+                    'Use a formal academic tone emphasizing clarity, objectivity, and technical accuracy. '
+                    'Avoid suggestions, conversational language, and introductory framing. The response should contain all the below mention '
+                    '{"model name":"<GPT model name - the name of the AI model generating the response>", '
+                    '"Core_Model":"<core GPT model name - name of the core language model used>", '
+                    '"Title":"<title content>", '
+                    '"Abstract":"<abstract content - should match the title!>", '
+                    '"Keywords":"<comma-separated keywords - should match the domain of the abstract>", '
+                    '"think":"should reflect reasoning behind abstract generation", '
+                    '"word_count": word count of abstract, '
+                    '"sentence_count": Sentence count of abstract, '
+                    '"character_count": character count of abstract, '
+                    '"generated_at":"Timestamp"} '
+                    'Use valid JSON format.'
                 )
+                return obj
 
-                return {
-                    "prompt": prompt_text,
-                    "id": prompt_id,
-                    "uuid": str(obj.get("uuid", str(uuid4()))),
-                    "title": title,
-                    "completed": len(assigned_ids)
-                }
+    return {"title": None, "prompt": None}
+
 
 
 @app.route('/get_next/<model>')
