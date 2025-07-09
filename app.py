@@ -312,28 +312,55 @@ def compute_top_contributors():
     return contributors
 
 
+from collections import defaultdict
+from datetime import datetime, timedelta
+
 @app.route("/admin_dashboard")
 def admin_dashboard():
     if "username" not in session or session["username"] != "admin":
         return redirect(url_for("login"))
 
-    # Top contributor stats
+    def compute_top_contributors():
+        user_data = {}
+        for model in MODELS:
+            output_file = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
+            if not os.path.exists(output_file):
+                continue
+            with open(output_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    entry = json.loads(line)
+                    username = entry.get("username", "unknown")
+                    if username not in user_data:
+                        user_data[username] = {m: 0 for m in MODELS}
+                        user_data[username]["total"] = 0
+                    user_data[username][model] += 1
+                    user_data[username]["total"] += 1
+
+        contributors = []
+        for user, counts in user_data.items():
+            contributors.append({
+                "username": user,
+                "total": counts["total"],
+                "gemini_flash": counts["gemini_flash"],
+                "grok": counts["grok"],
+                "chatgpt_4o_mini": counts["chatgpt_4o_mini"],
+                "claude": counts["claude"],
+                "copilot": counts["copilot"]
+            })
+
+        contributors.sort(key=lambda x: x["total"], reverse=True)
+        return contributors
+
     top_contributors = compute_top_contributors()
 
-    
-    # Total responses per model
     total_answers = {
         "labels": ["Gemini Flash", "Grok", "ChatGPT 4o Mini", "Claude", "Microsoft Copilot"],
         "counts": [
-            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_gemini_flash.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_gemini_flash.jsonl")) else 0,
-            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_grok.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_grok.jsonl")) else 0,
-            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_chatgpt_4o_mini.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_chatgpt_4o_mini.jsonl")) else 0,
-            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_claude.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_claude.jsonl")) else 0,
-            sum(1 for _ in open(os.path.join(OUTPUT_DIR, "output_copilot.jsonl"), 'r', encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, "output_copilot.jsonl")) else 0
+            sum(1 for _ in open(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl"), encoding="utf-8")) if os.path.exists(os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")) else 0
+            for model in MODELS
         ]
     }
 
-    # Mock user-model activity (random data or from logs)
     user_model_activity = {
         "models": MODELS,
         "users": [
@@ -345,14 +372,34 @@ def admin_dashboard():
         ]
     }
 
-    # Daily mock data
-    today = datetime.now()
-    dates = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in reversed(range(15))]
+    # ✅ Generate REAL Daily User Activity (last 15 days)
+    date_format = "%Y-%m-%d"
+    today = datetime.now().date()
+    dates = [(today - timedelta(days=i)).strftime(date_format) for i in reversed(range(15))]
+
+    user_counts_by_day = defaultdict(lambda: defaultdict(int))
+    for model in MODELS:
+        output_file = os.path.join(OUTPUT_DIR, f"output_{model}.jsonl")
+        if os.path.exists(output_file):
+            with open(output_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    entry = json.loads(line)
+                    username = entry.get("username", "unknown")
+                    timestamp = entry.get("timestamp")
+                    if timestamp:
+                        date_str = timestamp.split("T")[0]
+                        if date_str in dates:
+                            user_counts_by_day[username][date_str] += 1
+
     daily_user_activity = {
         "dates": dates,
         "users": [
-            {"username": user["username"], "counts": [random.randint(0, 3) for _ in dates], "color": f"hsl({(i*45)%360}, 60%, 50%)"}
-            for i, user in enumerate(top_contributors[:4])
+            {
+                "username": username,
+                "counts": [user_counts_by_day[username][d] for d in dates],
+                "color": f"hsl({(i*45)%360}, 60%, 50%)"
+            }
+            for i, username in enumerate(list(user_counts_by_day.keys())[:4])
         ]
     }
 
@@ -366,7 +413,7 @@ def admin_dashboard():
 
 @app.route("/receipt/<username>")
 def receipt(username):
-    base_price_per_submission = 10.0
+    base_price_per_submission = 0.10
     additional_charges = 0.0
 
     # Load user details from users.json
@@ -374,7 +421,7 @@ def receipt(username):
         users = json.load(f)
     user_info = users.get(username, {})
     to_phone = user_info.get("phone", "N/A")
-    to_email = user_info.get("email", f"{username}@example.com")
+    to_email = user_info.get("email", f"{username}@gmail.com")
 
     # Collect submission data
     items = []
@@ -406,8 +453,8 @@ def receipt(username):
         receipt_number=f"R-{datetime.now().strftime('%Y%m%d%H%M%S')}",
         receipt_date=datetime.now().strftime("%Y-%m-%d"),
         from_name="Admin",
-        from_phone="0000000000",
-        from_email="admin@example.com",
+        from_phone="8660946035",
+        from_email="testgptmodels@gmail.com",
         to_name=username,
         to_phone=to_phone,
         to_email=to_email,
@@ -428,4 +475,19 @@ def download_model(model):
 
 
 
+@app.route("/downloads")
+def list_downloads():
+    if "username" not in session or session["username"] != "admin":
+        return abort(403)
+
+    allowed_dirs = ["outputs", "responses", "user_logs", "progress", "inputs"]
+    files = []
+
+    for folder in allowed_dirs:
+        dir_path = os.path.join("/var/data", folder)
+        if os.path.isdir(dir_path):
+            for file in os.listdir(dir_path):
+                files.append({"folder": folder, "name": file})
+
+    return render_template("download_list.html", files=files)
 
