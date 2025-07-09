@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Download Files</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+</head>
+<body class="p-4">
+<h3>Download Available Files</h3>
+<table class="table table-bordered">
+    <thead>
+        <tr><th>Folder</th><th>File</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+    {% for item in files %}
+        <tr>
+            <td>{{ item.folder }}</td>
+            <td>{{ item.name }}</td>
+            <td><a class="btn btn-sm btn-primary" href="{{ url_for('download_file', folder=item.folder, filename=item.name) }}">Download</a></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</body>
+</html>
